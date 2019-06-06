@@ -6,9 +6,9 @@ Created on Sun Jun 2 2019
 
 """
 
-import xarray as xr
-import pandas as pd
 from functools import update_wrapper
+import pandas as pd
+import xarray as xr
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"

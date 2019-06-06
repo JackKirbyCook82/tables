@@ -7,7 +7,6 @@ Created on Fri Mar 15 2019
 """
 
 from abc import ABC, abstractmethod
-import xarray as xr
 import pandas as pd
 import numpy as np
 import json
@@ -58,7 +57,6 @@ class TableBase(ABC):
 
 class ArrayTable(TableBase):
     def __init__(self, xarray, *args, specs={}, **kwargs):
-        assert isinstance(xarray, xr.DataArray)
         self.__xarray = xarray
         self.__specs = specs
         super().__init__(*args, **kwargs)
@@ -89,7 +87,6 @@ class ArrayTable(TableBase):
 
 class FlatTable(TableBase):
     def __init__(self, dataframe, *args, specs={}, **kwargs):
-        assert isinstance(dataframe, pd.DataFrame)
         self.__dataframe = dataframe
         self.__specs = specs
         super().__init__(*args, **kwargs)
