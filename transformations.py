@@ -21,21 +21,15 @@ __copyright__ = "Copyright 2018, Jack Kirby Cook"
 __license__ = ""
 
 
-Axis = ntuple('Axis', 'index key')
-
-
-def update_xarray(function):
-    def wrapper(self, xarray, *args, axiskey, **kwargs):
-        return arr.apply_toxarray(xarray, function, *args, axis=axiskey, **kwargs)
+def with_strheader(function):
+    def wrapper(varray, *args, **kwargs):
+        ################################################################
+        pass
     update_wrapper(wrapper, function)
     return wrapper
-    
 
-def update_header(function):
-    def wrapper(self, header, *args, **kwargs):
-        return [str(item) for item in function(header, *args, **kwargs)]
-    update_wrapper(wrapper, function)
-    return function
+
+Axis = ntuple('Axis', 'index key')
 
 
 class Transformation(ABC):
@@ -52,13 +46,12 @@ class Transformation(ABC):
 
     def update_xarray(self, xarray, *args, axiskey, **kwargs):
         return arr.apply_toxarray(xarray, self.functions['xarray'], *args, axis=axiskey, **self.hyperparms, **kwargs)
-    def update_header(self, header, *args, **kwargs):
-        return [str(item) for item in self.functions['header'](header, *args, **self.hyperparms, **kwargs)]
+    @with_strheader
+    def update_varray(self, varray, *args, **kwargs):
+        return var.apply_tovarray(varray, self.functions['varray'], *args, **self.hyperparms, **kwargs)
 
     def getheader(self, xarray, *args, axiskey, **kwargs): 
         return xarray.coords[axiskey].values
-    #def strheader(self, header, spec):
-    #    return [spec.asval(string) for string in header]
     def setheader(self, xarray, header, *args, axiskey, **kwargs): 
         xarray.coords[axiskey] = pd.Index(header, name=axiskey)
         return xarray
@@ -92,34 +85,27 @@ class MinMax:
         return self.update_xarray(xarray, *args, axiskey=axiskey, **kwargs), specs
 
 
-@Transformation.register(xarray=arr.average, header=var.summation, weights=None)
+@Transformation.register(xarray=arr.average, varray=var.summation, weights=None)
 class Average: 
     def execute(self, xarray, specs, *args, axiskey, **kwargs):
         xarray = self.update_xarray(xarray, *args, axiskey=axiskey, **kwargs)
         header = self.getheader(xarray, *args, axiskey=axiskey, **kwargs)
-        #header = self.strheader(header, specs[axiskey])
-        header = self.update_header(header, *args, **kwargs)
+        header = self.update_varray(header, *args, **kwargs)
         xarray = self.setheader(xarray, header, *args, axiskey=axiskey, **kwargs)
         return xarray, specs
     
     
-@Transformation.register(xarray=arr.cumulate, header=var.cumulate, direction='upper')
+@Transformation.register(xarray=arr.cumulate, varray=var.cumulate, direction='upper')
 class Cumulate: 
     def execute(self, xarray, specs, *args, axiskey, **kwargs):
         xarray = self.update_xarray(xarray, *args, axiskey=axiskey, **kwargs)
-        header = self.getheader(xarray, *args, axiskey=axiskey, **kwargs)
-        #header = self.strheader(header, specs[axiskey])        
-        header = self.update_header(header, *args, **kwargs)
+        header = self.getheader(xarray, *args, axiskey=axiskey, **kwargs)    
+        header = self.update_varray(header, *args, **kwargs)
         xarray = self.setheader(xarray, header, *args, axiskey=axiskey, **kwargs)
         return xarray, specs
     
     
-    
-    
-    
-    
-    
-@Transformation.register(header=var.consolidate, method='average')
+@Transformation.register(varray=var.consolidate, method='average')
 class Consolidate: 
     pass
     
