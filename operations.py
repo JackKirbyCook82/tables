@@ -12,36 +12,41 @@ import xarray as xr
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
-__all__ = ['add', 'subtract', 'multiply', 'divide', 'combine', 'merge', 'append']
+__all__ = ['add', 'subtract', 'multiply', 'divide', 'combine', 'merge', 'append', 'OPERATIONS']
 __copyright__ = "Copyright 2018, Jack Kirby Cook"
 __license__ = ""
 
+
+OPERATIONS = {}
 
 def operation(function):
     def wrapper(table, other, *args, **kwargs):
         TableClass = table.__class__
         xarray = function(table.xarray, other.xarray, *args, **kwargs)        
-        specs = table.specs
-        return TableClass(xarray, specs=specs, name=table.name)
+        return TableClass(xarray, name=table.name)
     update_wrapper(wrapper, function)
+    OPERATIONS[function.__name__] = wrapper
     return wrapper
         
 
+class UnderConstructionError(Exception): pass
+
+
 @operation
 def add(xarray, other, *args, **kwargs):
-    pass
+    raise UnderConstructionError('tables.transformation.add(table, other, *args, **kwargs)')
 
 @operation
 def subtract(xarray, other, *args, **kwargs):
-    pass
+    raise UnderConstructionError('tables.transformation.subtract(table, other, *args, **kwargs)')
 
 @operation
 def multiply(xarray, other, *args, **kwargs):
-    pass
+    raise UnderConstructionError('tables.transformation.multiply(table, other, *args, **kwargs)')
 
 @operation
 def divide(xarray, other, *args, **kwargs):
-    pass
+    raise UnderConstructionError('tables.transformation.divide(table, other, *args, **kwargs)')
 
 @operation
 def combine(xarray, other, *args, onscope, **kwargs):

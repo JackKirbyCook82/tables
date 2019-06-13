@@ -10,6 +10,9 @@ from abc import ABC, abstractmethod
 import pandas as pd
 import numpy as np
 import json
+from functools import update_wrapper
+
+from tables.operations import OPERATIONS
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
@@ -56,15 +59,15 @@ class TableBase(ABC):
  
 
 class ArrayTable(TableBase):
-    def __init__(self, xarray, *args, specs={}, **kwargs):
+    def __init__(self, xarray, *args, variables, **kwargs):
         self.__xarray = xarray
-        self.__specs = specs
+        self.__variables = variables
         super().__init__(*args, **kwargs)
     
     @property
     def xarray(self): return self.__xarray
     @property
-    def specs(self): return self.__specs
+    def variables(self): return self.__variables
     
     @property
     def dim(self): return len(self.xarray.dims)
@@ -79,22 +82,35 @@ class ArrayTable(TableBase):
         data = self.__xarray.values
         headers = json.dumps({dim:list(self.__xarray.coords[dim].values) for dim in self.__xarray.dims}, sort_keys=False, indent=3, separators=(',', ' : '))
         scope = json.dumps(self.__xarray.attrs, sort_keys=False, indent=3, separators=(',', ' : '))
-        return ['DATA\n' + str(data), 'HEADERS\n' + str(headers), 'SCOPE\n' + str(scope)]
+        return ['DATA\n' + str(data), 'HEADERS\n' + str(headers), 'SCOPE\n' + str(scope)]    
+
+    def __add__(self, other): return self.add(other)
+    def __sub__(self, other): return self.subtract(other)
+    def __mul__(self, other): return self.multiply(other)
+    def __truediv__(self, other): return self.divide(other)
     
+    def __getattr__(self, attr): 
+        try: operation_function = OPERATIONS[attr]
+        except KeyError: raise AttributeError('{}.{}'.format(self.__class__.__name__, attr))
+        
+        def wrapper(other, *args, **kwargs): return operation_function(self, other, *args, **kwargs)
+        update_wrapper(wrapper, operation_function)   
+        return wrapper
+        
     def flatten(self): 
-        pass
-    
+        pass        
+
 
 class FlatTable(TableBase):
-    def __init__(self, dataframe, *args, specs={}, **kwargs):
+    def __init__(self, dataframe, *args, variables, **kwargs):
         self.__dataframe = dataframe
-        self.__specs = specs
+        self.__variables = variables
         super().__init__(*args, **kwargs)
 
     @property
     def dataframe(self): return self.__dataframe
     @property
-    def specs(self): return self.__specs
+    def variables(self): return self.__variables
 
     @property
     def dim(self): pass
