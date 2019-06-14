@@ -9,7 +9,6 @@ Created on Sun Jun 2 2019
 from abc import ABC, abstractmethod
 from collections import namedtuple as ntuple
 import pandas as pd
-from functools import update_wrapper
 
 import utilities.arrays as arr
 import variables.arrays as var
@@ -24,12 +23,15 @@ __license__ = ""
 Axis = ntuple('Axis', 'index key')
 
 
-def asheader(function):
-    def wrapper(self, header, *args, **kwargs):
-        ############################################################
-        pass
-    update_wrapper(wrapper, function)
-    return wrapper
+def getheader(xarray, *args, axis, **kwargs): 
+    return xarray.coords[axis].values
+
+def setheader(xarray, header, *args, axis, **kwargs): 
+    xarray.coords[axis] = pd.Index(header, name=axis)
+    return xarray 
+
+def tovarray(header, *args, variable, **kwargs): return [variable.fromstr(item) for item in header]
+def toheader(varray, *args, **kwargs): return [str(item) for item in varray]
 
 
 class Transformation(ABC):
@@ -38,23 +40,17 @@ class Transformation(ABC):
     def __call__(self, table, *args, axis, **kwargs):
         TableClass = table.__class__
         axis = Axis(table.axisindex(axis), table.axiskey(axis))
-        xarray = self.execute(table.xarray, *args, axiskey=axis.key, **kwargs)
-        return TableClass(xarray, name=table.name)
+        #xarray, variables = self.execute(table.xarray, table.variables, *args, axis=axis.key, **kwargs)
+        #return TableClass(xarray, variables=variables, name=table.name)
+        return table
         
     @abstractmethod
-    def execute(self, xarray, *args, axiskey, **kwargs): pass
+    def execute(self, xarray, variables, *args, axis, **kwargs): pass
 
-    def update_xarray(self, xarray, *args, axiskey, **kwargs):
-        return arr.apply_toxarray(xarray, self.functions['xarray'], *args, axis=axiskey, **self.hyperparms, **kwargs)
-    @asheader
+    def update_xarray(self, xarray, *args, axis, **kwargs):
+        return arr.apply_toxarray(xarray, self.functions['xarray'], *args, axis=axis, **self.hyperparms, **kwargs)
     def update_varray(self, varray, *args, **kwargs):
         return var.apply_tovarray(varray, self.functions['varray'], *args, **self.hyperparms, **kwargs)
-
-    def getheader(self, xarray, *args, axiskey, **kwargs): 
-        return xarray.coords[axiskey].values
-    def setheader(self, xarray, header, *args, axiskey, **kwargs): 
-        xarray.coords[axiskey] = pd.Index(header, name=axiskey)
-        return xarray
 
     @classmethod
     def register(cls, xarray=None, header=None, **hyperparms):  
@@ -71,39 +67,29 @@ class Transformation(ABC):
 
 @Transformation.register(xarray=arr.normalize)
 class Normalize: 
-    def execute(self, xarray, *args, axiskey, **kwargs):
-        return self.update_xarray(xarray, *args, axiskey=axiskey, **kwargs)
+    def execute(self, xarray, variables, *args, axis, **kwargs):
+        pass
         
 @Transformation.register(xarray=arr.standardize)
 class Standardize: 
-    def execute(self, xarray, *args, axiskey, **kwargs):
-        return self.update_xarray(xarray, *args, axiskey=axiskey, **kwargs)
+    def execute(self, xarray, variables, *args, axis, **kwargs):
+        pass
 
 @Transformation.register(xarray=arr.minmax)
 class MinMax: 
-    def execute(self, xarray, *args, axiskey, **kwargs):
-        return self.update_xarray(xarray, *args, axiskey=axiskey, **kwargs)
-
+    def execute(self, xarray, variables, *args, axis, **kwargs):
+        pass
 
 @Transformation.register(xarray=arr.average, varray=var.summation, weights=None)
 class Average: 
-    def execute(self, xarray, *args, axiskey, **kwargs):
-        xarray = self.update_xarray(xarray, *args, axiskey=axiskey, **kwargs)
-        header = self.getheader(xarray, *args, axiskey=axiskey, **kwargs)
-        header = self.update_varray(header, *args, **kwargs)
-        xarray = self.setheader(xarray, header, *args, axiskey=axiskey, **kwargs)
-        return xarray
+    def execute(self, xarray, variables, *args, axis, **kwargs):
+        pass
     
 @Transformation.register(xarray=arr.cumulate, varray=var.cumulate, direction='upper')
 class Cumulate: 
-    def execute(self, xarray, *args, axiskey, **kwargs):
-        xarray = self.update_xarray(xarray, *args, axiskey=axiskey, **kwargs)
-        header = self.getheader(xarray, *args, axiskey=axiskey, **kwargs)    
-        header = self.update_varray(header, *args, **kwargs)
-        xarray = self.setheader(xarray, header, *args, axiskey=axiskey, **kwargs)
-        return xarray
-    
-    
+    def execute(self, xarray, variables, *args, axis, **kwargs):
+        pass
+      
 @Transformation.register(varray=var.consolidate, method='average')
 class Consolidate: 
     pass
