@@ -23,7 +23,7 @@ def operation(function):
     def wrapper(table, other, *args, **kwargs):
         TableClass = table.__class__
         xarray = function(table.xarray, other.xarray, *args, **kwargs)        
-        return TableClass(xarray, variables=table.variables, name=table.name)
+        return TableClass(xarray, variables=table.variables, data=table.data, name=table.name)
     update_wrapper(wrapper, function)
     OPERATIONS[function.__name__] = wrapper
     return wrapper

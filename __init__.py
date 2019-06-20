@@ -42,12 +42,21 @@ _buffer = _OPTIONS['bufferchar'] * _OPTIONS['linewidth']
 
 
 class TableBase(ABC):
-    def __init__(self, *args, name='table', **kwargs): self.__tablename = name
-    def __str__(self, *args, **kwargs): return '\n'.join([_buffer, '\n\n'.join([self.__name, *self.strings, 'Dim={}, Shape={}'.format(self.dim, self.shape)]), _buffer])        
+    def __init__(self, *args, data, name='table', variables, **kwargs): 
+        self.__tabledata = data
+        self.__tablename = name
+        self.__variables = variables
+    
     @property
     def name(self): return self.__tablename
     @property
     def __name(self): return ' '.join([self.__tablename.upper(), 'as', self.__class__.__name__.upper()])
+    @property
+    def data(self): return self.__tabledata
+    @property
+    def variables(self): return self.__variables
+    
+    def __str__(self, *args, **kwargs): return '\n'.join([_buffer, '\n\n'.join([self.__name, *self.strings, 'Dim={}, Shape={}'.format(self.dim, self.shape)]), _buffer])        
     def __len__(self): return self.dim    
     
     @abstractmethod
@@ -59,15 +68,13 @@ class TableBase(ABC):
  
 
 class ArrayTable(TableBase):
-    def __init__(self, xarray, *args, variables, **kwargs):
+    def __init__(self, xarray, *args, **kwargs):
         self.__xarray = xarray
-        self.__variables = variables
         super().__init__(*args, **kwargs)
     
     @property
-    def xarray(self): return self.__xarray
-    @property
-    def variables(self): return self.__variables
+    def xarray(self): return self.__xarray   
+    def todict(self): return dict(xarray=self.xarray, data=self.data, variables=self.variables)
     
     @property
     def dim(self): return len(self.xarray.dims)
@@ -102,9 +109,8 @@ class ArrayTable(TableBase):
 
 
 class FlatTable(TableBase):
-    def __init__(self, dataframe, *args, variables, **kwargs):
+    def __init__(self, dataframe, *args, **kwargs):
         self.__dataframe = dataframe
-        self.__variables = variables
         super().__init__(*args, **kwargs)
 
     @property
@@ -121,7 +127,7 @@ class FlatTable(TableBase):
     def strings(self):
         pass
 
-    def unflatten(self, datakey):
+    def unflatten(self):
         pass
     
     
