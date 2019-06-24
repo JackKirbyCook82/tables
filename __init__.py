@@ -13,7 +13,7 @@ import json
 from functools import update_wrapper
 
 from utilities.dataframes import dataframe_fromxarray
-from utilities.arrays import xarray_fromdataframe
+from utilities.xarrays import xarray_fromdataframe
 
 from tables.operations import OPERATIONS
 
@@ -42,6 +42,7 @@ def show_options(): print('Table Options: ' + ', '.join([' = '.join([key, str(va
 
 
 _buffer = lambda : _OPTIONS['bufferchar'] * _OPTIONS['linewidth']
+_aslist = lambda items: [items] if not isinstance(items, (list, tuple)) else list(items)
 
 
 class TableBase(ABC):
@@ -49,7 +50,7 @@ class TableBase(ABC):
         self.__data = data
         self.__key = key
         self.__name = name
-        self.__variables = variables
+        self.__variables = variables.__class__({key:value for key, value in variables.items() if key in self.items()})
     
     @property
     def data(self): return self.__data
@@ -76,6 +77,9 @@ class TableBase(ABC):
     def dim(self): pass
     @abstractmethod
     def shape(self): pass  
+
+    @abstractmethod
+    def items(self): pass
  
 
 class ArrayTable(TableBase):
@@ -87,6 +91,7 @@ class ArrayTable(TableBase):
     @property
     def shape(self): return self.xarray.shape 
     
+    def items(self): return [self.key, *self.xarray.attrs.keys(), *self.xarray.coords.keys()]
     def axiskey(self, axis): return self.xarray.dim[axis] if isinstance(axis, int) else axis
     def axisindex(self, axis): return self.xarray.get_axis_num(axis) if isinstance(axis, str) else axis
     
@@ -126,6 +131,8 @@ class FlatTable(TableBase):
     @property
     def shape(self): return tuple([len(set(self.dataframe[column].values)) for column in self.headercolumns])
 
+    def items(self): return self.datacolumns + self.scopecolumns + self.headercolumns
+
     @property
     def strings(self): return ['DATA' + '\n' + str(self.dataframe)]
 
@@ -137,9 +144,13 @@ class FlatTable(TableBase):
     def headercolumns(self): return [column for column in self.dataframe.columns if all([column not in self.scopecolumns, column != self.key])]
     
     def unflatten(self):
-        return ArrayTable(xarray_fromdataframe(self.dataframe, self.key), key=self.key, name=self.name, variables=self.variables)
+        return ArrayTable(xarray_fromdataframe(self.dataframe, key=self.key), key=self.key, name=self.name, variables=self.variables)
     
-    
+    def createdata(self, key, *args, axes, function, varfunction=None, **kwargs):
+        dataframe, variables = self.dataframe, self.variables
+        dataframe[key] = dataframe[_aslist(axes)].apply(function, axis=1, *args, **kwargs)
+        variables[key] = varfunction(*[variables[axis] for axis in axes], *args, **kwargs)
+        return self.__class__(dataframe, key=self.key, name=self.name, variables=variables)
     
     
     
