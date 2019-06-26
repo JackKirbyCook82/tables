@@ -47,9 +47,7 @@ _aslist = lambda items: [items] if not isinstance(items, (list, tuple)) else lis
 
 class TableBase(ABC):
     def __init__(self, data, key, name, variables, **kwargs): 
-        self.__data = data
-        self.__key = key
-        self.__name = name
+        self.__data, self.__key, self.__name = data, key, name
         self.__variables = variables.__class__({key:value for key, value in variables.items() if key in self.items()})
     
     @property
@@ -65,14 +63,15 @@ class TableBase(ABC):
     def tablename(self): return ' '.join([self.__name.upper(), 'as', self.__class__.__name__.upper()])    
     def todict(self): return dict(data=self.data, key=self.key, name=self.name, variables=self.variables)
     
-    def __str__(self, *args, **kwargs): return '\n'.join([_buffer(), '\n\n'.join([self.tablename, *self.strings, *self.varstrings, 'Dim={}, Shape={}'.format(self.dim, self.shape)]), _buffer()])        
+    def __getitem__(self, key): return self.__class__(self.data[key], key=self.key, name=self.name, variables=self.variables)
+    #def __str__(self, *args, **kwargs): return '\n'.join([_buffer(), '\n\n'.join([self.tablename, *self.strings, *self.varstrings, 'Dim={}, Shape={}'.format(self.dim, self.shape)]), _buffer()])        
     def __len__(self): return self.dim    
     
-    @property
-    def varstrings(self): return ['VARIABLES' + '\n' + str(self.variables)]
+    #@property
+    #def varstrings(self): return ['VARIABLES =' + '\n' + str(self.variables)]   
     
-    @abstractmethod
-    def strings(self): pass
+    #@abstractmethod
+    #def strings(self): pass
     @abstractmethod
     def dim(self): pass
     @abstractmethod
@@ -90,17 +89,17 @@ class ArrayTable(TableBase):
     def dim(self): return len(self.xarray.dims)
     @property
     def shape(self): return self.xarray.shape 
-    
-    def items(self): return [self.key, *self.xarray.attrs.keys(), *self.xarray.coords.keys()]
+        
     def axiskey(self, axis): return self.xarray.dim[axis] if isinstance(axis, int) else axis
     def axisindex(self, axis): return self.xarray.get_axis_num(axis) if isinstance(axis, str) else axis
+    def items(self): return [self.key, *self.xarray.attrs.keys(), *self.xarray.coords.keys()]
     
-    @property
-    def strings(self):
-        data = self.xarray.values
-        headers = json.dumps({dim:list(self.xarray.coords[dim].values) for dim in self.xarray.dims}, sort_keys=False, indent=3, separators=(',', ' : '))
-        scope = json.dumps(self.xarray.attrs, sort_keys=False, indent=3, separators=(',', ' : '))
-        return ['DATA\n' + str(data), 'HEADERS\n' + str(headers), 'SCOPE\n' + str(scope)]    
+    #@property
+    #def strings(self):
+    #    data = self.xarray.values
+    #    headers = json.dumps({dim:list(self.xarray.coords[dim].values) for dim in self.xarray.dims}, sort_keys=False, indent=3, separators=(',', ' : '))
+    #    scope = json.dumps(self.xarray.attrs, sort_keys=False, indent=3, separators=(',', ' : '))
+    #    return ['DATA = "{}"\n'.format(self.key) + str(data), 'HEADERS =\n' + str(headers), 'SCOPE =\n' + str(scope)]    
 
     def __add__(self, other): return self.add(other)
     def __sub__(self, other): return self.subtract(other)
@@ -114,10 +113,7 @@ class ArrayTable(TableBase):
         def wrapper(other, *args, **kwargs): return operation_function(self, other, *args, **kwargs)
         update_wrapper(wrapper, operation_function)   
         return wrapper
-    
-    def __getitem__(self, key): 
-        return self.__class__(self.xarray[key], key=self.key, name=self.name, variables=self.variables)
-    
+
     def flatten(self): 
         return FlatTable(dataframe_fromxarray(self.xarray, self.key), key=self.key, name=self.name, variables=self.variables)     
 
@@ -131,10 +127,8 @@ class FlatTable(TableBase):
     @property
     def shape(self): return tuple([len(set(self.dataframe[column].values)) for column in self.headercolumns])
 
-    def items(self): return self.datacolumns + self.scopecolumns + self.headercolumns
-
-    @property
-    def strings(self): return ['DATA' + '\n' + str(self.dataframe)]
+    #@property
+    #def strings(self): return ['DATA' + '\n' + str(self.dataframe)]
 
     @property
     def datacolumns(self): return [self.key]
@@ -142,6 +136,7 @@ class FlatTable(TableBase):
     def scopecolumns(self): return [column for column in self.dataframe.columns if len(set(self.dataframe[column].values)) == 1]
     @property
     def headercolumns(self): return [column for column in self.dataframe.columns if all([column not in self.scopecolumns, column != self.key])]
+    def items(self): return self.datacolumns + self.scopecolumns + self.headercolumns
     
     def unflatten(self):
         return ArrayTable(xarray_fromdataframe(self.dataframe, key=self.key), key=self.key, name=self.name, variables=self.variables)

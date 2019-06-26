@@ -8,13 +8,15 @@ Created on Sun Jun 2 2019
 
 from abc import ABC, abstractmethod
 import pandas as pd
+from collections import OrderedDict as ODict
 
 import utilities.xarrays as xar
+import utilities.narrays as nar
 import variables.varrays as var
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
-__all__ = ['Scale', 'Average', 'Cumulate', 'Consolidate', 'Interpolate']
+__all__ = ['Scale', 'Reduction', 'Cumulate', 'Consolidate', 'Interpolate', 'Inversion']
 __copyright__ = "Copyright 2018, Jack Kirby Cook"
 __license__ = ""
 
@@ -48,77 +50,87 @@ class Transformation(ABC):
     def execute(self, *args, data, variables, axis, **kwargs): pass
 
     @classmethod
-    def register(cls, **hyperparms):  
+    def register(cls, xarray_funcs={}, varray_funcs={}, **hyperparms):  
         def wrapper(subclass):
             name = subclass.__name__
             bases = (subclass, cls)
-            attrs = dict(default_hyperparms=hyperparms)           
+            attrs = dict(default_hyperparms=hyperparms, xarray_funcs=xarray_funcs, varray_funcs=varray_funcs)           
             return type(name, bases, attrs)
         return wrapper  
 
 
-@Transformation.register(method='normalize')
+@Transformation.register(xarray_funcs={'normalize':xar.normalize, 'stardardize':xar.standardize, 'minmax':xar.minmax})
 class Scale: 
-    def execute(self, *args, data, variables, key, axis, **kwargs):
-        xarray = xar.scale(data, *args, axis=axis, **kwargs)
-        variables[key] = getattr(variables[key], 'scale')(*args, **kwargs)
+    def execute(self, *args, data, variables, key, axis, method, **kwargs):
+        xarray = self.xarray_funcs[method](data, *args, axis=axis, **kwargs)
+        variables[key] = getattr(variables[key], 'scale')(*args, method=method, **kwargs)
         return {'data': xarray, 'variables': variables}
 
 
-@Transformation.register(weights=None)
-class Average: 
-    def execute(self, *args, data, variables, key, axis, **kwargs):
+@Transformation.register(xarray_funcs={'summation':xar.summation, 'mean':xar.mean, 'stdev':xar.stdev, 'minimum':xar.minimum, 'maximum':xar.maximum, 'average':xar.average}, varray_funcs={'summation':var.summation})
+class Reduction: 
+    def execute(self, *args, data, variables, key, axis, method, **kwargs):
         header = getheader(data, axis)
         varray = tovarray(header, variables[axis])
-        xarray = xar.average(data, *args, axis=axis, **kwargs)
-        varray = var.summation(varray, *args, **kwargs)
+        xarray = self.xarray_funcs[method](data, *args, axis=axis, **kwargs)
+        varray = self.varray_funcs['summation'](varray, *args, **kwargs)
         header = toheader(varray)
         xarray = setheader(xarray, header, axis)
-        variables[key] = getattr(variables[key], 'modify')(*args, mod='average', **kwargs)
+        variables[key] = getattr(variables[key], 'modify')(*args, data=method, **kwargs)
         return {'data': xarray, 'variables': variables}
     
     
-@Transformation.register(direction='lower')
+@Transformation.register(xarray_funcs={'cumulate':xar.cumulate}, varray_funcs={'cumulate':var.cumulate}, direction='lower')
 class Cumulate: 
     def execute(self, *args, data, variables, axis, **kwargs):
         header = getheader(data, axis)
         varray = tovarray(header, variables[axis])
-        xarray = xar.cumulate(data, *args, axis=axis, **kwargs)
-        varray = var.cumulate(varray, *args, **kwargs)
+        xarray = self.xarray_funcs['cumulate'](data, *args, axis=axis, **kwargs)
+        varray = self.varray_funcs['cumulate'](varray, *args, **kwargs)
         header = toheader(varray)
         xarray = setheader(xarray, header, axis)
         return {'data': xarray}
       
         
-@Transformation.register()
+@Transformation.register(varray_funcs={'consolidate':var.consolidate})
 class Consolidate: 
     def execute(self, *args, data, variables, key, axis, **kwargs):
         header = getheader(data, axis)
         varray = tovarray(header, variables[axis])
-        varray = var.consolidate(varray, *args, **kwargs)
+        varray = self.varray_funcs['consolidate'](varray, *args, **kwargs)
         header = toheader(varray)
         xarray = setheader(data, header, axis)
         variables[axis] = getattr(variables[axis], 'consolidate')(*args, **kwargs)
         return {'data': xarray, 'variables': variables}
     
-    
-@Transformation.register(method='linear', fill='extrapolate')
-class Interpolate: 
+       
+@Transformation.register(xarray_funcs={'interpolate':xar.interpolate}, varray_funcs={'factory':var.varray_fromvalues}, method='linear', fill='extrapolate')
+class Interpolate:
     def execute(self, *args, data, variables, key, axis, values, **kwargs):
         header = getheader(data, axis)
         varray = tovarray(header, variables[axis])
-        hdrvalues = tovalues(varray)
-        xarray = setheader(data, hdrvalues, axis)
-        xarray = xar.interpolate(data, *args, axis=axis, values=values, **kwargs)
-        varray = var.varray_fromvalues(values, *args, variable=variables[axis], **kwargs)
+        data.coords[axis] = tovalues(varray)
+        xarray = self.xarray_funcs['interpolate'](data, *args, axis=axis, values=values, **kwargs)
+        varray = self.varray_funcs['factory'](values, *args, variable=variables[axis], **kwargs)
         header = toheader(varray)
         xarray = setheader(xarray, header, axis)
-        return {'data': xarray}
-    
-    
+        return {'data':xarray}
 
 
-
-
+@Transformation.register(xarray_funcs={'interpolate':nar.interpolate, 'factory':xar.xarray_fromvalues}, varray_funcs={'factory':var.varray_fromvalues}, method='linear', fill='extrapolate')
+class Inversion:
+    def execute(self, *args, data, variables, key, axis, values, **kwargs):
+        narray, axes, attrs = data.values, data.coords, data.attrs                
+        header = getheader(data, axis)
+        varray = tovarray(header, variables[axis])
+        hdrvals = tovalues(varray)
+        axisnum = data.get_axis_num(axis)
+        narray = self.xarray_funcs['interpolate'](narray, hdrvals, values, *args, axis=axisnum, invert=True, **kwargs)
+        varray = self.varray_funcs['factory'](values, *args, variable=variables[key], **kwargs)
+        header = toheader(varray)
+        axes = ODict([(k, v) if k != axis else (key, header) for k, v in zip(axes.to_index().names, axes.to_index().levels)]) 
+        axes = ODict([(k, pd.Index(v, name=k)) for k, v in axes.items()])
+        xarray = self.xarray_funcs['factory'](narray, axes=axes, scope=attrs)
+        return {'data': xarray, 'key':axis}
 
 
