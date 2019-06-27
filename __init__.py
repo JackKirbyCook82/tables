@@ -9,11 +9,11 @@ Created on Fri Mar 15 2019
 from abc import ABC, abstractmethod
 import pandas as pd
 import numpy as np
-import json
 from functools import update_wrapper
 
 from utilities.dataframes import dataframe_fromxarray
 from utilities.xarrays import xarray_fromdataframe
+from utilities.strings import uppercase
 
 from tables.operations import OPERATIONS
 
@@ -46,6 +46,8 @@ _aslist = lambda items: [items] if not isinstance(items, (list, tuple)) else lis
 
 
 class TableBase(ABC):
+    variableformat = 'VARIABLE[{index}] = {key}: {values}' 
+    
     def __init__(self, data, key, name, variables, **kwargs): 
         self.__data, self.__key, self.__name = data, key, name
         self.__variables = variables.__class__({key:value for key, value in variables.items() if key in self.items()})
@@ -64,14 +66,14 @@ class TableBase(ABC):
     def todict(self): return dict(data=self.data, key=self.key, name=self.name, variables=self.variables)
     
     def __getitem__(self, key): return self.__class__(self.data[key], key=self.key, name=self.name, variables=self.variables)
-    #def __str__(self, *args, **kwargs): return '\n'.join([_buffer(), '\n\n'.join([self.tablename, *self.strings, *self.varstrings, 'Dim={}, Shape={}'.format(self.dim, self.shape)]), _buffer()])        
+    def __str__(self): return '\n'.join([_buffer(), '\n\n'.join([self.tablename, self.strings, self.variablestrings, 'Dim={}, Shape={}'.format(self.dim, self.shape)]), _buffer()])        
     def __len__(self): return self.dim    
     
-    #@property
-    #def varstrings(self): return ['VARIABLES =' + '\n' + str(self.variables)]   
+    @property
+    def variablestrings(self): return '\n'.join([self.variableformat.format(index=index, key=uppercase(key), values=values.name()) for index, key, values in zip(range(len(self.variables)), self.variables.keys(), self.variables.values())])  
     
-    #@abstractmethod
-    #def strings(self): pass
+    @abstractmethod
+    def strings(self): pass
     @abstractmethod
     def dim(self): pass
     @abstractmethod
@@ -82,6 +84,10 @@ class TableBase(ABC):
  
 
 class ArrayTable(TableBase):
+    dataformat = 'DATA = {key}:\n{values}'
+    headerformat = 'HEADER[{index}] = {key}:\n{values}'
+    scopeformat = 'SCOPE[{index}] = {key}: {values}'    
+    
     @property
     def xarray(self): return self.data   
     
@@ -94,12 +100,14 @@ class ArrayTable(TableBase):
     def axisindex(self, axis): return self.xarray.get_axis_num(axis) if isinstance(axis, str) else axis
     def items(self): return [self.key, *self.xarray.attrs.keys(), *self.xarray.coords.keys()]
     
-    #@property
-    #def strings(self):
-    #    data = self.xarray.values
-    #    headers = json.dumps({dim:list(self.xarray.coords[dim].values) for dim in self.xarray.dims}, sort_keys=False, indent=3, separators=(',', ' : '))
-    #    scope = json.dumps(self.xarray.attrs, sort_keys=False, indent=3, separators=(',', ' : '))
-    #    return ['DATA = "{}"\n'.format(self.key) + str(data), 'HEADERS =\n' + str(headers), 'SCOPE =\n' + str(scope)]    
+    @property
+    def strings(self): return '\n\n'.join([self.datastring, self.headerstrings, self.scopestrings])
+    @property
+    def datastring(self): return self.dataformat.format(key=uppercase(self.key), values=self.xarray.values)
+    @property
+    def headerstrings(self): return '\n'.join([self.headerformat.format(index=index, key=uppercase(axis), values=self.xarray.coords[axis].values) for index, axis in zip(range(len(self.xarray.dims)), self.xarray.dims)])
+    @property
+    def scopestrings(self): return '\n'.join([self.scopeformat.format(index=index, key=uppercase(key), values=values) for index, key, values in zip(range(len(self.xarray.attrs)), self.xarray.attrs.keys(), self.xarray.attrs.values())])
 
     def __add__(self, other): return self.add(other)
     def __sub__(self, other): return self.subtract(other)
@@ -119,6 +127,8 @@ class ArrayTable(TableBase):
 
 
 class FlatTable(TableBase):
+    dataformat = 'DATA = {key}:\n{values}'
+    
     @property
     def dataframe(self): return self.data
 
@@ -127,8 +137,8 @@ class FlatTable(TableBase):
     @property
     def shape(self): return tuple([len(set(self.dataframe[column].values)) for column in self.headercolumns])
 
-    #@property
-    #def strings(self): return ['DATA' + '\n' + str(self.dataframe)]
+    @property
+    def strings(self): return self.dataformat.format(key=uppercase(self.key), values=str(self.data))
 
     @property
     def datacolumns(self): return [self.key]
@@ -146,12 +156,18 @@ class FlatTable(TableBase):
         dataframe[key] = dataframe[_aslist(axes)].apply(function, axis=1, *args, **kwargs)
         variables[key] = varfunction(*[variables[axis] for axis in axes], *args, **kwargs)
         return self.__class__(dataframe, key=self.key, name=self.name, variables=variables)
+
+
+class GeoTable(object):
+    def __init__(self, data, name, repository, **kwargs): 
+        self.__data, self.__name = data, name
+        self.__repository = repository
     
+    @property
+    def tablename(self): return ' '.join([self.__name.upper(), 'as', self.__class__.__name__.upper()])   
+    def __str__(self): return '\n'.join([_buffer(), self.tablename, str(self.__data), _buffer()])
     
-    
-    
-    
-    
+
     
     
     
