@@ -48,14 +48,12 @@ _aslist = lambda items: [items] if not isinstance(items, (list, tuple)) else lis
 class TableBase(ABC):
     variableformat = 'VARIABLE[{index}] = {key}: {values}' 
     
-    def __init__(self, data, key, name, variables, **kwargs): 
-        self.__data, self.__key, self.__name = data, key, name
+    def __init__(self, data, name, variables, **kwargs): 
+        self.__data, self.__name = data, name
         self.__variables = variables.__class__({key:value for key, value in variables.items() if key in self.items()})
     
     @property
     def data(self): return self.__data
-    @property
-    def key(self): return self.__key   
     @property
     def name(self): return self.__name
     @property
@@ -63,9 +61,9 @@ class TableBase(ABC):
     
     @property
     def tablename(self): return ' '.join([self.__name.upper(), 'as', self.__class__.__name__.upper()])    
-    def todict(self): return dict(data=self.data, key=self.key, name=self.name, variables=self.variables)
+    def todict(self): return dict(data=self.data, name=self.name, variables=self.variables)
     
-    def __getitem__(self, key): return self.__class__(self.data[key], key=self.key, name=self.name, variables=self.variables)
+    def __getitem__(self, key): return self.__class__(self.data[key], name=self.name, variables=self.variables)
     def __str__(self): return '\n'.join([_buffer(), '\n\n'.join([self.tablename, self.strings, self.variablestrings, 'Dim={}, Shape={}'.format(self.dim, self.shape)]), _buffer()])        
     def __len__(self): return self.dim    
     
@@ -88,8 +86,14 @@ class ArrayTable(TableBase):
     headerformat = 'HEADER[{index}] = {key}:\n{values}'
     scopeformat = 'SCOPE[{index}] = {key}: {values}'    
     
+    def __init__(self, *args, key, **kwargs):
+        self.__key = key
+        super().__init__(*args, **kwargs)
+    
     @property
     def xarray(self): return self.data   
+    @property
+    def key(self): return self.__key
     
     @property
     def dim(self): return len(self.xarray.dims)
@@ -99,6 +103,7 @@ class ArrayTable(TableBase):
     def axiskey(self, axis): return self.xarray.dim[axis] if isinstance(axis, int) else axis
     def axisindex(self, axis): return self.xarray.get_axis_num(axis) if isinstance(axis, str) else axis
     def items(self): return [self.key, *self.xarray.attrs.keys(), *self.xarray.coords.keys()]
+    def todict(self): return dict(key=self.key, **super().todict())
     
     @property
     def strings(self): return '\n\n'.join([self.datastring, self.headerstrings, self.scopestrings])
@@ -109,6 +114,7 @@ class ArrayTable(TableBase):
     @property
     def scopestrings(self): return '\n'.join([self.scopeformat.format(index=index, key=uppercase(key), values=values) for index, key, values in zip(range(len(self.xarray.attrs)), self.xarray.attrs.keys(), self.xarray.attrs.values())])
 
+    def __getitem__(self, key): return self.__class__(self.data[key], key=self.key, name=self.name, variables=self.variables)
     def __add__(self, other): return self.add(other)
     def __sub__(self, other): return self.subtract(other)
     def __mul__(self, other): return self.multiply(other)
@@ -123,52 +129,42 @@ class ArrayTable(TableBase):
         return wrapper
 
     def flatten(self): 
-        return FlatTable(dataframe_fromxarray(self.xarray, self.key), key=self.key, name=self.name, variables=self.variables)     
+        return FlatTable(dataframe_fromxarray(self.xarray, self.key), name=self.name, variables=self.variables)     
 
 
 class FlatTable(TableBase):
-    dataformat = 'DATA = {key}:\n{values}'
+    dataformat = 'DATA =\n{values}'
     
     @property
     def dataframe(self): return self.data
 
     @property
-    def dim(self): return len(self.headercolumns)
+    def dim(self): return self.dataframe.ndim
     @property
-    def shape(self): return tuple([len(set(self.dataframe[column].values)) for column in self.headercolumns])
+    def shape(self): return self.dataframe.shape
+
+    def items(self): return [column for column in self.dataframe.columns]
 
     @property
-    def strings(self): return self.dataformat.format(key=uppercase(self.key), values=str(self.data))
+    def strings(self): return self.dataformat.format(values=str(self.data))
 
     @property
-    def datacolumns(self): return [self.key]
+    def datacolumns(self): return [column for column in self.dataframe.columns if column not in self.scopecolumns]
     @property
     def scopecolumns(self): return [column for column in self.dataframe.columns if len(set(self.dataframe[column].values)) == 1]
-    @property
-    def headercolumns(self): return [column for column in self.dataframe.columns if all([column not in self.scopecolumns, column != self.key])]
-    def items(self): return self.datacolumns + self.scopecolumns + self.headercolumns
     
-    def unflatten(self):
-        return ArrayTable(xarray_fromdataframe(self.dataframe, key=self.key), key=self.key, name=self.name, variables=self.variables)
+    def unflatten(self, datakey, headerkeys):
+        dataframe = self.dataframe[[datakey, *_aslist(headerkeys), *self.scopecolumns]]
+        return ArrayTable(xarray_fromdataframe(dataframe, key=datakey), key=datakey, name=self.name, variables=self.variables)
     
     def createdata(self, key, *args, axes, function, varfunction=None, **kwargs):
         dataframe, variables = self.dataframe, self.variables
         dataframe[key] = dataframe[_aslist(axes)].apply(function, axis=1, *args, **kwargs)
         variables[key] = varfunction(*[variables[axis] for axis in axes], *args, **kwargs)
-        return self.__class__(dataframe, key=self.key, name=self.name, variables=variables)
+        return self.__class__(data=dataframe, name=self.name, variables=variables)
 
 
-class GeoTable(object):
-    def __init__(self, data, name, repository, **kwargs): 
-        self.__data, self.__name = data, name
-        self.__repository = repository
-    
-    @property
-    def tablename(self): return ' '.join([self.__name.upper(), 'as', self.__class__.__name__.upper()])   
-    def __str__(self): return '\n'.join([_buffer(), self.tablename, str(self.__data), _buffer()])
-    
 
-    
     
     
     
