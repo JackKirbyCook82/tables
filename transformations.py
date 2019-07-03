@@ -80,7 +80,7 @@ class Cumulate:
         varray = self.varray_funcs['cumulate'](varray, *args, **kwargs)
         xarray = setheader(xarray, axis, varray)
         return {'data': xarray}
-      
+    
         
 @Transformation.register(varray_funcs={'consolidate':var.consolidate})
 class Consolidate: 
@@ -90,6 +90,15 @@ class Consolidate:
         xarray = setheader(data, axis, varray)
         variables[axis] = getattr(variables[axis], 'consolidate')(*args, **kwargs)
         return {'data': xarray, 'variables': variables}
+ 
+
+@Transformation.register(varray_funcs={'boundary':var.boundary})
+class Boundary:
+    def execute(self, *args, data, variables, key, axis, boundarys, **kwargs):
+        varray = getheader(data, axis, variables[axis])
+        varray = self.varray_funcs['boundary'](varray, *args, **kwargs)
+        xarray = setheader(data, axis, varray)
+        return {'data': xarray}
     
        
 @Transformation.register(xarray_funcs={'interpolate':xar.interpolate}, varray_funcs={'factory':var.varray_fromvalues}, method='linear', fill='extrapolate')
