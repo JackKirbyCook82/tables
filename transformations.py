@@ -30,7 +30,8 @@ def setheader(xarray, axis, header):
 class Transformation(ABC):
     def __init__(self, *args, **hyperparms): 
         self.hyperparms = {key:value for key, value in self.default_hyperparms.items()}
-        self.hyperparms.update(hyperparms)           
+        self.hyperparms.update(hyperparms)   
+        assert all([key in self.hyperparms.keys() for key in self.required_hyperparms])        
     def __repr__(self): return '{}({})'.format(self.__class__.__name__, self.hyperparms)
     
     def __call__(self, table, *args, axis, **kwargs):
@@ -44,11 +45,12 @@ class Transformation(ABC):
     def execute(self, *args, data, variables, axis, **kwargs): pass
 
     @classmethod
-    def register(cls, xarray_funcs={}, varray_funcs={}, **hyperparms):  
+    def register(cls, *required_hyperparms, xarray_funcs={}, varray_funcs={}, **default_hyperparms):  
         def wrapper(subclass):
             name = subclass.__name__
             bases = (subclass, cls)
-            attrs = dict(default_hyperparms=hyperparms, xarray_funcs=xarray_funcs, varray_funcs=varray_funcs)           
+            attrs = dict(default_hyperparms=default_hyperparms, required_hyperparms=[*required_hyperparms, *default_hyperparms.keys()], 
+                         xarray_funcs=xarray_funcs, varray_funcs=varray_funcs)           
             return type(name, bases, attrs)
         return wrapper  
 
@@ -57,7 +59,7 @@ class Transformation(ABC):
 class Scale: 
     def execute(self, *args, data, variables, key, axis, method, **kwargs):
         xarray = self.xarray_funcs[method](data, *args, axis=axis, **kwargs)
-        variables[key] = getattr(variables[key], 'scale')(*args, method=method, **kwargs)
+        variables[key] = variables[key].scale(*args, method=method, axis=variables[axis].data(), **kwargs)
         return {'data': xarray, 'variables': variables}
 
 
@@ -68,8 +70,20 @@ class Reduction:
         xarray = self.xarray_funcs[method](data, *args, axis=axis, **kwargs)
         varray = self.varray_funcs['summation'](varray, *args, **kwargs)
         xarray = setheader(xarray, axis, varray)
-        variables[key] = getattr(variables[key], 'modify')(*args, data=method, **kwargs)
+        variables[key] = variables[key].transformation(*args, method=method, axis=axis, **kwargs)
         return {'data': xarray, 'variables': variables}
+    
+    
+@Transformation.register(xarray_funcs={'average':xar.average}, varray_funcs={'summation':var.summation})
+class WeightedAverage:
+    def execute(self, *args, data, variables, key, axis, **kwargs):
+        varray = getheader(data, axis, variables[axis])
+        values = [item.value for item in varray]
+        xarray = self.xarray_funcs['average'](data, *args, axis=axis, weights=values, **kwargs)
+        varray = self.varray_funcs['summation'](varray, *args, **kwargs)
+        xarray = setheader(xarray, axis, varray)
+        variables[key] = variables[key].transformation(*args, method='average', weights=axis, **kwargs)
+        return {'data': xarray, 'variables': variables}        
     
     
 @Transformation.register(xarray_funcs={'cumulate':xar.cumulate}, varray_funcs={'cumulate':var.cumulate}, direction='lower')
@@ -82,13 +96,13 @@ class Cumulate:
         return {'data': xarray}
     
         
-@Transformation.register(varray_funcs={'consolidate':var.consolidate})
+@Transformation.register('method', varray_funcs={'consolidate':var.consolidate})
 class Consolidate: 
-    def execute(self, *args, data, variables, key, axis, **kwargs):
+    def execute(self, *args, data, variables, key, axis, method, **kwargs):
         varray = getheader(data, axis, variables[axis])
-        varray = self.varray_funcs['consolidate'](varray, *args, **kwargs)
+        varray = self.varray_funcs['consolidate'](varray, *args, method=method, **kwargs)
         xarray = setheader(data, axis, varray)
-        variables[axis] = getattr(variables[axis], 'consolidate')(*args, **kwargs)
+        variables[axis] = variables[axis].consolidate(*args, method=method, axis=axis, **kwargs)
         return {'data': xarray, 'variables': variables}
  
 
@@ -96,7 +110,7 @@ class Consolidate:
 class Boundary:
     def execute(self, *args, data, variables, key, axis, boundarys, **kwargs):
         varray = getheader(data, axis, variables[axis])
-        varray = self.varray_funcs['boundary'](varray, *args, **kwargs)
+        varray = self.varray_funcs['boundary'](varray, *args, boundarys=boundarys, **kwargs)
         xarray = setheader(data, axis, varray)
         return {'data': xarray}
     

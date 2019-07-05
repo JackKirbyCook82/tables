@@ -200,19 +200,21 @@ class FlatTable(TableBase):
     def createdata(self, key, *args, **kwargs): raise KeyError(key)
     
     @createdata.register('single')
-    def __createdata_fromcolumn(self, key, *args, axis, function, variable_function, **kwargs):      
+    def __createdata_fromcolumn(self, key, *args, axis, function, **kwargs):      
         dataframe, variables = self.dataframe, self.variables
-        wrapper = lambda item: str(function(variables[axis].fromstr(item)))
-        dataframe[key] = dataframe[axis].apply(wrapper)        
-        variables[key] = variable_function(variables[axis])
+        wrapper = lambda item: function(variables[axis].fromstr(item))
+        dataframe[key] = dataframe[axis].apply(wrapper)          
+        variables[key] = type(dataframe[key].loc[0])
+        dataframe[key] = dataframe[key].apply(str)
         return dict(data=dataframe, variables=variables)
 
     @createdata.register('multiple')
-    def __createdata_fromcolumns(self, key, *args, axes, function, variable_function, **kwargs):
+    def __createdata_fromcolumns(self, key, *args, axes, function, **kwargs):
         dataframe, variables = self.dataframe, self.variables
-        wrapper = lambda items: str(function(*[variables[axis].fromstr(items[index]) for axis, index in zip(axes, range(len(axes)))]))
-        dataframe[key] = dataframe[axes].apply(wrapper, axis=1)       
-        variables[key] = variable_function(*[variables[axis] for axis in axes])
+        wrapper = lambda items: function(*[variables[axis].fromstr(items[index]) for axis, index in zip(axes, range(len(axes)))])
+        dataframe[key] = dataframe[axes].apply(wrapper, axis=1)    
+        variables[key] = type(dataframe[key].loc[0])
+        dataframe[key] = dataframe[key].apply(str)
         return dict(data=dataframe, variables=variables)    
     
     def unflatten(self, datakey, headerkeys, scopekeys):
