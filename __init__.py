@@ -80,15 +80,13 @@ class ArrayTable(TableBase):
     scopeformat = 'SCOPE[{index}] = {key}: {values}'    
     variableformat = 'VARIABLE[{index}] = {key}: {values}' 
     
-    def __init__(self, *args, key, variables, **kwargs):
-        self.__key = key
+    def __init__(self, *args, datakey, variables, **kwargs):
+        self.__datakey = datakey
         super().__init__(*args, **kwargs)
         self.__variables = variables.__class__({k:v for k, v in variables.items() if k in self.items()})
            
     @property
     def xarray(self): return self.data  
-    @property
-    def key(self): return self.__key
     @property
     def variables(self): return self.__variables
     
@@ -96,16 +94,29 @@ class ArrayTable(TableBase):
     def dim(self): return len(self.xarray.dims)
     @property
     def shape(self): return self.xarray.shape
+    
+    @property
+    def datakey(self): return self.__datakey
+    @property
+    def headerkeys(self): return self.xarray.dims
+    def headervalues(self, key): return list(self.xarray.coords[key].values)
+    @property
+    def headers(self): return {key:self.headervalues(key) for key in self.headerkeys}
+    @property
+    def scopekeys(self): return tuple(self.xarray.attrs.keys())
+    def scopevalue(self, key): return self.xarray.attrs[key]
+    @property
+    def scope(self): return {key:self.scopevalue(key) for key in self.scopekeys}
         
     def axiskey(self, axis): return self.xarray.dim[axis] if isinstance(axis, int) else axis
     def axisindex(self, axis): return self.xarray.get_axis_num(axis) if isinstance(axis, str) else axis
-    def items(self): return [self.key, *self.xarray.attrs.keys(), *self.xarray.coords.keys()]
-    def todict(self): return dict(data=self.xarray, key=self.key, name=self.name, variables=self.variables)
+    def items(self): return [self.datakey, *self.xarray.attrs.keys(), *self.xarray.coords.keys()]
+    def todict(self): return dict(data=self.xarray, key=self.datakey, name=self.name, variables=self.variables)
     
     @property
     def strings(self): return '\n\n'.join([self.datastring, self.headerstrings, self.scopestrings, self.variablestrings])
     @property
-    def datastring(self): return self.dataformat.format(key=uppercase(self.key, withops=True), values=self.xarray.values)
+    def datastring(self): return self.dataformat.format(key=uppercase(self.datakey, withops=True), values=self.xarray.values)
     @property
     def headerstrings(self): return '\n'.join([self.headerformat.format(index=index, key=uppercase(axis, withops=True), values=self.xarray.coords[axis].values) for index, axis in zip(range(len(self.xarray.dims)), self.xarray.dims)])
     @property
@@ -130,7 +141,7 @@ class ArrayTable(TableBase):
         keyitems.update({key:list(self.xarray.coords.values())[index] for key, index in indexitems.items()})
         xarray = xarray[indexitems].loc[keyitems]
         xarray.attrs.update(keyitems)
-        return self.__class__(data=xarray, key=self.key, name=self.name, variables=self.variables)
+        return self.__class__(data=xarray, datakey=self.datakey, name=self.name, variables=self.variables)
            
     def __getattr__(self, attr): 
         try: operation_function = OPERATIONS[attr]
@@ -151,10 +162,19 @@ class ArrayTable(TableBase):
         dataframe = dataframe_fromxarray(self.xarray)
         dataframe[self.key] = dataframe[self.key].apply(lambda x: str(self.variables[self.key](x)))
         return FlatTable(data=dataframe, name=self.name, variables=self.variables)     
+    
+    def toframe(self, index=[]):
+        index = _aslist(index)
+        columns = [item for item in self.headerkeys if item not in index]       
+        dataframe = self.xarray.to_dataframe()[self.datakey].to_frame().reset_index()  
+        dataframe = pd.pivot_table(dataframe, columns=columns ,index=index, values=self.datakey)       
+        setattr(dataframe, 'scope', self.xarray.attrs)
+        dataframe.name = self.datakey
+        return dataframe
 
 
 class FlatTable(TableBase):
-    dataformat = 'DATA = {key}:\n{values}'
+    dataformat = 'DATA:\n{values}' 
     variableformat = 'VARIABLE[{index}] = {key}: {values}' 
 
     def __init__(self, *args, data, variables, **kwargs):
@@ -182,7 +202,7 @@ class FlatTable(TableBase):
     @property
     def strings(self): return '\n\n'.join([self.datastring, self.variablestrings])
     @property
-    def datastring(self): return self.dataformat.format(key='DataFrame', values=str(self.dataframe))    
+    def datastring(self): return self.dataformat.format(values=str(self.dataframe))    
     @property
     def variablestrings(self): return '\n'.join([self.variableformat.format(index=index, key=uppercase(key, withops=True), values=values.name()) for index, key, values in zip(range(len(self.variables)), self.variables.keys(), self.variables.values())])  
 
@@ -225,20 +245,23 @@ class FlatTable(TableBase):
         try: dataframe[datakey] = dataframe[datakey].apply(lambda x: self.variables[datakey].fromstr(x).value)
         except: pass
         xarray = xarray_fromdataframe(dataframe, datakey=datakey, headerkeys=headerkeys, scopekeys=scopekeys)
-        return ArrayTable(data=xarray, key=datakey, name=self.name, variables=self.variables)
+        return ArrayTable(data=xarray, datakey=datakey, name=self.name, variables=self.variables)
     
 
 class GeoTable(TableBase):
-    dataformat = 'DATA = {key}:\n{values}'
+    dataformat = 'DATA:\n{values}'
 
-    def __init__(self, *args, data, **kwargs):
-        assert all([item in data.columns for item in ('geography', 'geometry')])   
-        geodataframe = data.set_index('geography', drop=True)    
-        super().__init__(*args, data=geodataframe, **kwargs)  
-    
+    def __init__(self, *args, geodata, geoname, **kwargs):
+        assert all([item in geodata.columns for item in ('geography', 'geometry')])  
+        assert all([item in geoname.columns for item in ('geography', 'geoname')])    
+        geodataframe = geodata.set_index('geography', drop=True)  
+        namedataframe = geoname.set_index('geography', drop=True)  
+        dataframe = pd.concat([geodataframe, namedataframe], axis=1, sort=False)
+        super().__init__(*args, data=dataframe, **kwargs)   
+
     @property
     def geodataframe(self): return self.data
-
+    
     @property      
     def dim(self): return self.geodataframe.ndim
     @property
@@ -247,12 +270,23 @@ class GeoTable(TableBase):
     @property
     def strings(self): return '\n\n'.join([self.datastring])
     @property
-    def datastring(self): return self.dataformat.format(key='GeoDataFrame', values=str(self.geodataframe)) 
+    def datastring(self): return self.dataformat.format(values=str(self.geodataframe))  
 
     def todict(self): return dict(data=self.geodataframe, name=self.name)
     def items(self): return [column for column in self.geodataframe.columns]   
     
-
+    def plotmap(self, arraytable):
+        assert len(arraytable.headerkeys) == 1
+        assert arraytable.headerkeys[0] == 'geography'
+        series = arraytable.toframe('geography')
+        geodataframe = pd.concat([self.geodataframe, series], axis=1, sort=False)
+        print(str(arraytable))
+        geodataframe.plot(arraytable.datakey, legend=True, figsize=(6,4))
+ 
+    
+    
+    
+    
     
     
     
