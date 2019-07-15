@@ -111,7 +111,7 @@ class ArrayTable(TableBase):
     def axiskey(self, axis): return self.xarray.dim[axis] if isinstance(axis, int) else axis
     def axisindex(self, axis): return self.xarray.get_axis_num(axis) if isinstance(axis, str) else axis
     def items(self): return [self.datakey, *self.xarray.attrs.keys(), *self.xarray.coords.keys()]
-    def todict(self): return dict(data=self.xarray, key=self.datakey, name=self.name, variables=self.variables)
+    def todict(self): return dict(data=self.xarray, datakey=self.datakey, name=self.name, variables=self.variables)
     
     @property
     def strings(self): return '\n\n'.join([self.datastring, self.headerstrings, self.scopestrings, self.variablestrings])
@@ -156,7 +156,7 @@ class ArrayTable(TableBase):
         xarray.coords[axis] = pd.Index([self.variables[axis].fromstr(item) for item in xarray.coords[axis].values])
         xarray = xarray.sortby(axis, ascending=ascending)
         xarray.coords[axis] = pd.Index([str(item) for item in xarray.coords[axis].values], name=axis)
-        return self.__class__(data=xarray, key=self.key, name=self.name, variables=self.variables)
+        return self.__class__(data=xarray, datakey=self.datakey, name=self.name, variables=self.variables)
 
     def flatten(self): 
         dataframe = dataframe_fromxarray(self.xarray)
@@ -251,13 +251,10 @@ class FlatTable(TableBase):
 class GeoTable(TableBase):
     dataformat = 'DATA:\n{values}'
 
-    def __init__(self, *args, geodata, geoname, **kwargs):
-        assert all([item in geodata.columns for item in ('geography', 'geometry')])  
-        assert all([item in geoname.columns for item in ('geography', 'geoname')])    
+    def __init__(self, *args, geodata, **kwargs):
+        assert all([item in geodata.columns for item in ('geography', 'geometry')])   
         geodataframe = geodata.set_index('geography', drop=True)  
-        namedataframe = geoname.set_index('geography', drop=True)  
-        dataframe = pd.concat([geodataframe, namedataframe], axis=1, sort=False)
-        super().__init__(*args, data=dataframe, **kwargs)   
+        super().__init__(*args, data=geodataframe, **kwargs)   
 
     @property
     def geodataframe(self): return self.data
@@ -280,7 +277,6 @@ class GeoTable(TableBase):
         assert arraytable.headerkeys[0] == 'geography'
         series = arraytable.toframe('geography')
         geodataframe = pd.concat([self.geodataframe, series], axis=1, sort=False)
-        print(str(arraytable))
         geodataframe.plot(arraytable.datakey, legend=True, figsize=(6,4))
  
     
