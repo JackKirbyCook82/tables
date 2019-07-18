@@ -7,13 +7,12 @@ Created on Mon Jul 15 2019
 """
 
 from functools import update_wrapper
-from collections import OrderedDict as ODict
 
 import tables as tbls
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
-__all__ = ['Calculation', 'Pipeline']
+__all__ = ['Calculation']
 __copyright__ = "Copyright 2018, Jack Kirby Cook"
 __license__ = ""
 
@@ -61,21 +60,7 @@ class Calculation(dict):
         return [datakey, headerkeys, scopekeys]
     
     
-class Pipeline(ODict):
-    def __init__(self, *args, **kwargs):
-        self.__args = args
-        self.__kwargs = kwargs
-        super().__init__()
-        
-    def __call__(self, table, *args, axis, **kwargs):
-        for key, transformation in self.items(): 
-            table = transformation(table, *args, *self.__args, axis=axis, **kwargs, **self.__kwargs)
-        return table
-    
-    
-    
-    
-    
+
     
     
     

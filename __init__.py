@@ -160,7 +160,7 @@ class ArrayTable(TableBase):
 
     def flatten(self): 
         dataframe = dataframe_fromxarray(self.xarray)
-        dataframe[self.key] = dataframe[self.key].apply(lambda x: str(self.variables[self.key](x)))
+        dataframe[self.datakey] = dataframe[self.datakey].apply(lambda x: str(self.variables[self.datakey](x)))
         return FlatTable(data=dataframe, name=self.name, variables=self.variables)     
     
     def toframe(self, index=[]):
