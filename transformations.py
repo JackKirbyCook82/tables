@@ -16,7 +16,7 @@ import variables.varrays as var
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
-__all__ = ['Scale', 'Reduction', 'Cumulate', 'Consolidate', 'Interpolate', 'Inversion', 'WeightedAverage', 'Boundary']
+__all__ = ['Scale', 'Reduction', 'Cumulate', 'Consolidate', 'Unconsolidate', 'Interpolate', 'Inversion', 'WeightedAverage', 'Boundary']
 __copyright__ = "Copyright 2018, Jack Kirby Cook"
 __license__ = ""
 
@@ -95,6 +95,16 @@ class Cumulate:
         xarray = setheader(xarray, axis, varray)
         return {'data': xarray}
     
+    
+#@Transformation.register('direction', xarray_funcs={'uncumulate':xar.cumulate}, varray_funcs={'uncumulate':var.cumulate})
+#class Uncumulate: 
+#    def execute(self, *args, data, variables, axis, direction, **kwargs):
+#        varray = getheader(data, axis, variables[axis])
+#        xarray = self.xarray_funcs['uncumulate'](data, *args, axis=axis, direction=direction, **kwargs)
+#        varray = self.varray_funcs['uncumulate'](varray, *args, direction=direction, **kwargs)
+#        xarray = setheader(xarray, axis, varray)
+#        return {'data': xarray}
+    
         
 @Transformation.register('method', varray_funcs={'consolidate':var.consolidate})
 class Consolidate: 
@@ -104,7 +114,17 @@ class Consolidate:
         xarray = setheader(data, axis, varray)
         variables[axis] = variables[axis].consolidate(*args, method=method, axis=axis, **kwargs)
         return {'data': xarray, 'variables': variables}
- 
+
+
+@Transformation.register('method', varray_funcs={'unconsolidate':var.unconsolidate})
+class Unconsolidate:
+    def execute(self, *args, data, variables, datakey, axis, method, **kwargs):
+        varray = getheader(data, axis, variables[axis])
+        varray = self.varray_funcs['unconsolidate'](varray, *args, method=method, **kwargs)
+        xarray = setheader(data, axis, varray)
+        variables[axis] = variables[axis].unconsolidate(*args, method=method, axis=axis, **kwargs)
+        return {'data': xarray, 'variables': variables}
+
 
 @Transformation.register('boundarys', varray_funcs={'boundary':var.boundary})
 class Boundary:

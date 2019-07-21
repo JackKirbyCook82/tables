@@ -30,6 +30,7 @@ class Calculation(dict):
         return decorator
 
     def __call__(self, *args, **kwargs):
+        self.webapi.reset()
         tables = {key:value(*args, **kwargs) for key, value in self.items()}
         return self.function(tables, *args, **kwargs)
     

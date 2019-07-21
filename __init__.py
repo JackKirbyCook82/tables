@@ -83,10 +83,12 @@ class ArrayTable(TableBase):
     def __init__(self, *args, datakey, variables, **kwargs):
         self.__datakey = datakey
         super().__init__(*args, **kwargs)
-        self.__variables = variables.__class__({k:v for k, v in variables.items() if k in self.items()})
+        self.__variables = variables.__class__([(key, variables[key]) for key in (self.datakey, *self.headerkeys, *self.scopekeys)])
            
     @property
     def xarray(self): return self.data  
+    @property
+    def narray(self): return self.data.values
     @property
     def variables(self): return self.__variables
     
@@ -99,7 +101,10 @@ class ArrayTable(TableBase):
     def datakey(self): return self.__datakey
     @property
     def headerkeys(self): return self.xarray.dims
-    def headervalues(self, key): return list(self.xarray.coords[key].values)
+    def headervalues(self, key): 
+        if isinstance(key, int): return self.headervalues(self.headerkeys[key])
+        elif isinstance(key, str): return list(self.xarray.coords[key].values)
+        else: raise TypeError(key)
     @property
     def headers(self): return {key:self.headervalues(key) for key in self.headerkeys}
     @property
@@ -242,7 +247,7 @@ class FlatTable(TableBase):
         assert all([len(set(self.dataframe[key].values)) == 1 for key in scopekeys if key in self.dataframe.columns])
         headerkeys.sort(key=lambda key: len(set(self.dataframe[key].values)))
         dataframe = self.dataframe[[datakey, *headerkeys, *scopekeys]]
-        try: dataframe[datakey] = dataframe[datakey].apply(lambda x: self.variables[datakey].fromstr(x).value)
+        try: dataframe.loc[:, datakey] = dataframe[datakey].apply(lambda x: self.variables[datakey].fromstr(x).value)
         except: pass
         xarray = xarray_fromdataframe(dataframe, datakey=datakey, headerkeys=headerkeys, scopekeys=scopekeys)
         return ArrayTable(data=xarray, datakey=datakey, name=self.name, variables=self.variables)
@@ -259,6 +264,9 @@ class GeoTable(TableBase):
     @property
     def geodataframe(self): return self.data
     
+    @property
+    def index(self): return self.geodataframe.index.values
+    
     @property      
     def dim(self): return self.geodataframe.ndim
     @property
@@ -272,18 +280,7 @@ class GeoTable(TableBase):
     def todict(self): return dict(data=self.geodataframe, name=self.name)
     def items(self): return [column for column in self.geodataframe.columns]   
     
-    def plotmap(self, arraytable):
-        assert len(arraytable.headerkeys) == 1
-        assert arraytable.headerkeys[0] == 'geography'
-        series = arraytable.toframe('geography')
-        geodataframe = pd.concat([self.geodataframe, series], axis=1, sort=False)
-        geodataframe.plot(arraytable.datakey, legend=True, figsize=(6,4))
- 
-    
-    
-    
-    
-    
+
     
     
     
