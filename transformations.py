@@ -16,7 +16,7 @@ import variables.varrays as var
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
-__all__ = ['Scale', 'Reduction', 'Cumulate', 'Consolidate', 'Unconsolidate', 'Interpolate', 'Inversion', 'WeightedAverage', 'Boundary']
+__all__ = ['Scale', 'Reduction', 'Cumulate', 'Uncumulate', 'Consolidate', 'Recumulate', 'Unconsolidate', 'Interpolate', 'Inversion', 'WeightedAverage', 'Boundary']
 __copyright__ = "Copyright 2018, Jack Kirby Cook"
 __license__ = ""
 
@@ -96,16 +96,28 @@ class Cumulate:
         return {'data': xarray}
     
     
-#@Transformation.register('direction', xarray_funcs={'uncumulate':xar.cumulate}, varray_funcs={'uncumulate':var.cumulate})
-#class Uncumulate: 
-#    def execute(self, *args, data, variables, axis, direction, **kwargs):
-#        varray = getheader(data, axis, variables[axis])
-#        xarray = self.xarray_funcs['uncumulate'](data, *args, axis=axis, direction=direction, **kwargs)
-#        varray = self.varray_funcs['uncumulate'](varray, *args, direction=direction, **kwargs)
-#        xarray = setheader(xarray, axis, varray)
-#        return {'data': xarray}
+@Transformation.register('direction', xarray_funcs={'uncumulate':xar.uncumulate}, varray_funcs={'uncumulate':var.uncumulate})
+class Uncumulate: 
+    def execute(self, *args, data, variables, axis, direction, **kwargs):
+        varray = getheader(data, axis, variables[axis])
+        xarray = self.xarray_funcs['uncumulate'](data, *args, axis=axis, direction=direction, **kwargs)
+        varray = self.varray_funcs['uncumulate'](varray, *args, direction=direction, **kwargs)
+        xarray = setheader(xarray, axis, varray)
+        return {'data': xarray}
     
+
+@Transformation.register('method', 'period', xarray_funcs={'average':xar.movingaverage}, varray_funcs={'average':var.movingaverage, 'summation':var.movingtotal, 'range':var.movingrange})
+class MovingAverage:
+    def execute(self, *args, data, variables, datakey, axis, method, period, **kwargs):
+        varray = getheader(data, axis, variables[axis])
+        xarray = self.xarray_funcs['average'](data, *args, axis=axis, direction=direction, **kwargs)
+        varray = self.varray_funcs[method](varray, *args, period=period, **kwargs)
+        xarray = setheader(xarray, axis, varray)
+        variables[datakey] = # (Upper|Cum_XXX)_Num_Variable or (Upper|Cum_XXX)_Num_Variable or XXX_Num_Variable or (50%wt|Avg_XXX)_Num_Variable
+        variables[axis] = # (Quantiles_Households)_Num_Variable or (Quantiles_Households)_Range_Variable
+        return {'data': xarray}        
         
+    
 @Transformation.register('method', varray_funcs={'consolidate':var.consolidate})
 class Consolidate: 
     def execute(self, *args, data, variables, datakey, axis, method, **kwargs):
