@@ -16,7 +16,7 @@ import variables.varrays as var
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
-__all__ = ['Scale', 'Reduction', 'Cumulate', 'Uncumulate', 'Consolidate', 'Recumulate', 'Unconsolidate', 'Interpolate', 'Inversion', 'WeightedAverage', 'Boundary']
+__all__ = []
 __copyright__ = "Copyright 2018, Jack Kirby Cook"
 __license__ = ""
 
@@ -63,7 +63,7 @@ class Scale:
         return {'data': xarray, 'variables': variables}
 
 
-@Transformation.register('method', xarray_funcs={'summation':xar.summation, 'mean':xar.mean, 'stdev':xar.stdev, 'minimum':xar.minimum, 'maximum':xar.maximum, 'average':xar.average}, varray_funcs={'summation':var.summation})
+@Transformation.register('method', xarray_funcs={'summation':xar.summation, 'mean':xar.mean, 'stdev':xar.stdev, 'minimum':xar.minimum, 'maximum':xar.maximum}, varray_funcs={'summation':var.summation})
 class Reduction: 
     def execute(self, *args, data, variables, datakey, axis, method, **kwargs):
         varray = getheader(data, axis, variables[axis])
@@ -74,7 +74,7 @@ class Reduction:
         return {'data': xarray, 'variables': variables}
     
     
-@Transformation.register(xarray_funcs={'average':xar.average}, varray_funcs={'summation':var.summation})
+@Transformation.register(xarray_funcs={'weightaverage':xar.weightaverage}, varray_funcs={'summation':var.summation})
 class WeightedAverage:
     def execute(self, *args, data, variables, datakey, axis, **kwargs):
         varray = getheader(data, axis, variables[axis])
@@ -82,7 +82,7 @@ class WeightedAverage:
         xarray = self.xarray_funcs['average'](data, *args, axis=axis, weights=values, **kwargs)
         varray = self.varray_funcs['summation'](varray, *args, **kwargs)
         xarray = setheader(xarray, axis, varray)
-        variables[datakey] = variables[datakey].transformation(*args, method='average', weights=axis, **kwargs)
+        variables[datakey] = variables[datakey].transformation(*args, method='weightaverage', axis=axis, **kwargs)
         return {'data': xarray, 'variables': variables}        
     
     
@@ -106,16 +106,16 @@ class Uncumulate:
         return {'data': xarray}
     
 
-@Transformation.register('method', 'period', xarray_funcs={'average':xar.movingaverage}, varray_funcs={'average':var.movingaverage, 'summation':var.movingtotal, 'range':var.movingrange})
+@Transformation.register('method', 'period', xarray_funcs={'average':xar.movingaverage}, varray_funcs={'average':var.movingaverage, 'total':var.movingtotal, 'bracket':var.movingbracket})
 class MovingAverage:
     def execute(self, *args, data, variables, datakey, axis, method, period, **kwargs):
         varray = getheader(data, axis, variables[axis])
-        xarray = self.xarray_funcs['average'](data, *args, axis=axis, direction=direction, **kwargs)
+        xarray = self.xarray_funcs['average'](data, *args, axis=axis, period=period, **kwargs)
         varray = self.varray_funcs[method](varray, *args, period=period, **kwargs)
         xarray = setheader(xarray, axis, varray)
-        variables[datakey] = # (Upper|Cum_XXX)_Num_Variable or (Upper|Cum_XXX)_Num_Variable or XXX_Num_Variable or (50%wt|Avg_XXX)_Num_Variable
-        variables[axis] = # (Quantiles_Households)_Num_Variable or (Quantiles_Households)_Range_Variable
-        return {'data': xarray}        
+        variables[datakey] = variables[datakey].moving(*args, method='average', axis=axis, period=period, **kwargs)
+        #variables[axis] = variables[axis].moving(*args, method=method, period=period, **kwargs)
+        return {'data': xarray, 'variables':variables}        
         
     
 @Transformation.register('method', varray_funcs={'consolidate':var.consolidate})
@@ -147,7 +147,7 @@ class Boundary:
         return {'data': xarray}
 
     
-@Transformation.register('method', 'values', array_funcs={'interpolate':xar.interpolate}, varray_funcs={'factory':var.varray_fromvalues})
+@Transformation.register('method', 'values', xarray_funcs={'interpolate':xar.interpolate}, varray_funcs={'factory':var.varray_fromvalues})
 class Interpolate:
     def execute(self, *args, data, variables, datakey, axis, method, values, **kwargs):
         varray = getheader(data, axis, variables[axis])

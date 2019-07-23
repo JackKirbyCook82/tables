@@ -13,7 +13,7 @@ import xarray as xr
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
-__all__ = ['combine', 'merge', 'append', 'multiply', 'divide', 'OPERATIONS']
+__all__ = []
 __copyright__ = "Copyright 2018, Jack Kirby Cook"
 __license__ = ""
 
