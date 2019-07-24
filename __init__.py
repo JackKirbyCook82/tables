@@ -165,6 +165,7 @@ class ArrayTable(TableBase):
 
     def flatten(self): 
         dataframe = dataframe_fromxarray(self.xarray)
+        dataframe.rename(columns={list(set([column for column in dataframe.columns if column not in self.headerkeys]))[0]:self.datakey}, inplace=True)
         dataframe[self.datakey] = dataframe[self.datakey].apply(lambda x: str(self.variables[self.datakey](x)))
         return FlatTable(data=dataframe, name=self.name, variables=self.variables)     
     
