@@ -80,11 +80,10 @@ class ArrayTable(TableBase):
     scopeformat = 'SCOPE[{index}] = {key}: {values}'    
     variableformat = 'VARIABLE[{index}] = {key}: {values}' 
     
-    def __init__(self, *args, datakey, variables, **kwargs):
-        self.__datakey = datakey
+    def __init__(self, *args, variables, **kwargs):
         super().__init__(*args, **kwargs)
         self.__variables = variables.__class__([(key, variables[key]) for key in (self.datakey, *self.headerkeys, *self.scopekeys)])
-           
+        
     @property
     def xarray(self): return self.data  
     @property
@@ -98,7 +97,7 @@ class ArrayTable(TableBase):
     def shape(self): return self.xarray.shape
     
     @property
-    def datakey(self): return self.__datakey
+    def datakey(self): return self.xarray.name
     @property
     def headerkeys(self): return self.xarray.dims
     def headervalues(self, key): 
@@ -111,11 +110,13 @@ class ArrayTable(TableBase):
     def scopekeys(self): return tuple(self.xarray.attrs.keys())
     def scopevalue(self, key): return self.xarray.attrs[key]
     @property
+    def scopevalues(self): return list(self.xarray.attrs.values())
+    @property
     def scope(self): return {key:self.scopevalue(key) for key in self.scopekeys}
         
     def axiskey(self, axis): return self.xarray.dim[axis] if isinstance(axis, int) else axis
     def axisindex(self, axis): return self.xarray.get_axis_num(axis) if isinstance(axis, str) else axis
-    def items(self): return [self.datakey, *self.xarray.attrs.keys(), *self.xarray.coords.keys()]
+    def items(self): return [self.datakey, *self.headerkeys, *self.scopekeys]
     def todict(self): return dict(data=self.xarray, datakey=self.datakey, name=self.name, variables=self.variables)
     
     @property
@@ -123,9 +124,9 @@ class ArrayTable(TableBase):
     @property
     def datastring(self): return self.dataformat.format(key=uppercase(self.datakey, withops=True), values=self.xarray.values)
     @property
-    def headerstrings(self): return '\n'.join([self.headerformat.format(index=index, key=uppercase(axis, withops=True), values=self.xarray.coords[axis].values) for index, axis in zip(range(len(self.xarray.dims)), self.xarray.dims)])
+    def headerstrings(self): return '\n'.join([self.headerformat.format(index=index, key=uppercase(axis, withops=True), values=self.xarray.coords[axis].values) for index, axis in zip(range(len(self.headerkeys)), self.headerkeys)])
     @property
-    def scopestrings(self): return '\n'.join([self.scopeformat.format(index=index, key=uppercase(key, withops=True), values=values) for index, key, values in zip(range(len(self.xarray.attrs)), self.xarray.attrs.keys(), self.xarray.attrs.values())])
+    def scopestrings(self): return '\n'.join([self.scopeformat.format(index=index, key=uppercase(key, withops=True), values=values) for index, key, values in zip(range(len(self.scopekeys)), self.scopekeys, self.scopevalues)])
     @property
     def variablestrings(self): return '\n'.join([self.variableformat.format(index=index, key=uppercase(key, withops=True), values=values.name()) for index, key, values in zip(range(len(self.variables)), self.variables.keys(), self.variables.values())])  
 
@@ -140,13 +141,14 @@ class ArrayTable(TableBase):
         keyitems = {key:value for key, value in items.items() if isinstance(value, str)}
         sliceitems = {key:value for key, value in items.items() if isinstance(value, slice)}
         assert len(indexitems) + len(sliceitems) + len(keyitems) == len(items)
-        assert all([key in self.xarray.dims for key in keyitems.keys()])
-        assert all([value in self.xarray.coords[key] for key, value in keyitems.items()])
-        xarray = self.xarray[sliceitems]
-        keyitems.update({key:list(self.xarray.coords.values())[index] for key, index in indexitems.items()})
-        xarray = xarray[indexitems].loc[keyitems]
-        xarray.attrs.update(keyitems)
-        return self.__class__(data=xarray, datakey=self.datakey, name=self.name, variables=self.variables)
+        assert all([key in self.headerkeys for key in keyitems.keys()])
+        assert all([value in self.headervalues(key) for key, value in keyitems.items()])
+        newxarray = self.xarray[sliceitems]
+        keyitems.update({key:list(self.headervalues(index)) for key, index in indexitems.items()})
+        newxarray = newxarray[indexitems].loc[keyitems]
+        newxarray.attrs.update(keyitems)
+        newxarray.name = self.xarray.name
+        return self.__class__(data=newxarray, datakey=self.datakey, name=self.name, variables=self.variables)
            
     def __getattr__(self, attr): 
         try: operation_function = OPERATIONS[attr]
@@ -157,15 +159,15 @@ class ArrayTable(TableBase):
         return wrapper
 
     def sort(self, axis, ascending=True):
-        xarray = self.xarray
-        xarray.coords[axis] = pd.Index([self.variables[axis].fromstr(item) for item in xarray.coords[axis].values])
-        xarray = xarray.sortby(axis, ascending=ascending)
-        xarray.coords[axis] = pd.Index([str(item) for item in xarray.coords[axis].values], name=axis)
-        return self.__class__(data=xarray, datakey=self.datakey, name=self.name, variables=self.variables)
+        newxarray = self.xarray
+        newxarray.coords[axis] = pd.Index([self.variables[axis].fromstr(item) for item in newxarray.coords[axis].values])
+        newxarray = newxarray.sortby(axis, ascending=ascending)
+        newxarray.coords[axis] = pd.Index([str(item) for item in newxarray.coords[axis].values], name=axis)
+        newxarray.name = self.xarray.name
+        return self.__class__(data=newxarray, datakey=self.datakey, name=self.name, variables=self.variables)
 
     def flatten(self): 
         dataframe = dataframe_fromxarray(self.xarray)
-        dataframe.rename(columns={list(set([column for column in dataframe.columns if column not in self.headerkeys]))[0]:self.datakey}, inplace=True)
         dataframe[self.datakey] = dataframe[self.datakey].apply(lambda x: str(self.variables[self.datakey](x)))
         return FlatTable(data=dataframe, name=self.name, variables=self.variables)     
     

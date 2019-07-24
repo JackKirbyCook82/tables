@@ -188,7 +188,7 @@ class Inversion:
         varray = self.varray_funcs['factory'](values[datakey], *args, variable=variables[datakey], how=how, **kwargs)
         axes = ODict([(k, v) if k != axis else (datakey, [str(item) for item in varray]) for k, v in zip(axes.to_index().names, axes.to_index().levels)]) 
         axes = ODict([(k, pd.Index(v, name=k)) for k, v in axes.items()])
-        xarray = self.xarray_funcs['factory'](narray, axes=axes, scope=attrs)        
+        xarray = self.xarray_funcs['factory'](narray, name=axis, axes=axes, scope=attrs)        
         return {'data': xarray, 'datakey':axis}
 
 

@@ -56,11 +56,8 @@ def multiply_data(xarray, other, *args, **kwargs):
     scope = xarray.attrs
     scope.update(other.attrs)
     newxarray.attrs = scope
+    newxarray.name = '*'.join([xarray.name, other.name])
     return newxarray
-
-@multiply.register('datakey')
-def multiply_datakey(datakey, other, *args, **kwargs):
-    return '*'.join([datakey, other])
 
 @multiply.register('variables')
 def multiply_variables(variables, others, *args, dim, **kwargs):
@@ -83,11 +80,8 @@ def divide_data(xarray, other, *args, **kwargs):
     scope = xarray.attrs
     scope.update(other.attrs)
     newxarray.attrs = scope
+    newxarray.name = '/'.join([xarray.name, other.name])
     return newxarray
-
-@divide.register('datakey')
-def divide_datakey(datakey, other, *args, **kwargs):
-    return '/'.join([datakey, other])
 
 @divide.register('variables')
 def divide_variables(variables, others, *args, dim, **kwargs):
@@ -105,6 +99,7 @@ def combine(*args, **kwargs): pass
 @combine.register('data')
 def combine_data(xarray, other, *args, onscope, **kwargs):
     newxarray = xr.concat([xarray, other], pd.Index([xarray.attrs[onscope], other.attrs[onscope]], name=onscope))
+    newxarray.name = xarray.name
     return {'data':newxarray}
 
 
@@ -114,6 +109,7 @@ def merge(*args, **kwargs): pass
 @merge.register('data')
 def merge_data(xarray, other, *args, onaxis, **kwargs):
     newxarray = xr.concat([xarray, other], dim=onaxis)
+    newxarray.name = xarray.name
     return {'data':newxarray}
 
 
@@ -125,6 +121,7 @@ def append_data(xarray, other, *args, toaxis, **kwargs):
     other = other.expand_dims(toaxis)
     other.coords[toaxis] = pd.Index([other.attrs.pop(toaxis)], name=toaxis)
     newxarray = xr.concat([xarray, other], dim=toaxis)
+    newxarray.name = xarray.name
     return {'data':newxarray}
 
 
