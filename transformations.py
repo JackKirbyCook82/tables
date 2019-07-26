@@ -37,13 +37,13 @@ class Transformation(ABC):
     
     def __call__(self, table, *args, axis, **kwargs):
         TableClass = table.__class__
-        dataset, dataarrays, variables, name = table.dataset, table.dataarrays, table.variables, table.name
+        dataset, dataarrays, variables = table.dataset, table.dataarrays, table.variables
         newdataarrays = {datakey:self.execute(*args, datakey=datakey, dataarray=dataarray, axis=axis, variables=variables, **self.hyperparms, **kwargs) for datakey, dataarray in dataarrays.items()}
         newvariables = {datakey:(self.datavariable(*args, variable=variable, **self.hyperparms, **kwargs) if datakey in dataarrays.keys() else variable) for datakey, variable in variables.items() }
         newvariables.update({axis:self.axisvariable(*args, variable=variables[axis], **self.hyperparms, **kwargs)})
         newdataset = xr.merge([dataarray.to_dataset(name=datakey) for datakey, dataarray in newdataarrays.items()])    
         newdataset.attrs = dataset.attrs
-        return TableClass(data=newdataset, variables=newvariables, name=name)
+        return TableClass(data=newdataset, variables=newvariables)
 
     @abstractmethod
     def execute(self, *args, datakey, dataarray, axis, variables, **kwargs): pass
@@ -189,11 +189,11 @@ class Inversion(object):
     
     def __call__(self, table, *args, datakey, axis, **kwargs):
         TableClass = table.__class__
-        dataarrays, variables, name = table.dataarrays, table.variables, table.name        
+        dataarrays, variables = table.dataarrays, table.variables  
         newdataarray = self.execute(*args, datakey=datakey, dataarray=dataarrays[datakey], axis=axis, variables=variables, **self.hyperparms, **kwargs)
         newdataset = newdataarray.to_dataset()
         newdataset.attrs = newdataarray.attrs
-        return TableClass(data=newdataset, variables=variables, name=name)
+        return TableClass(data=newdataset, variables=variables)
 
     def execute(self, *args, datakey, dataarray, axis, variables, how, values, **kwargs): 
         narray, axes, attrs = dataarray.values, dataarray.coords, dataarray.attrs   

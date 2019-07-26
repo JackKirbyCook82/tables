@@ -7,92 +7,129 @@ Created on Sun Jun 2 2019
 """
 
 from functools import update_wrapper
+from itertools import chain
 import pandas as pd
 import xarray as xr
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
-__all__ = ['multiply', 'divide', 'combine', 'merge', 'append']
+__all__ = ['multiply', 'divide', 'combine', 'merge', 'append', 'layer']
 __copyright__ = "Copyright 2018, Jack Kirby Cook"
 __license__ = ""
 
 
-OPERATIONS = {}
-
 _aslist = lambda items: [items] if not isinstance(items, (list, tuple)) else list(items)
 
 
-def operation(*args, **kwargs):
+def internal_operation(newdatakey_function, newvariable_function):
     def decorator(function):
-        def wrapper(table, other, *wargs, datakey, otherdatakey, **wkwargs):
+        def wrapper(table, *args, datakey, otherdatakey, **kwargs):
             TableClass = table.__class__       
-            dataset, dataarray, variables, name = table.dataset, table.dataarrays[datakey], table.variables.copy(), table.name
-            otherdataarray, othervariables, othername = other.dataarrays[otherdatakey], other.variables, other.name
-            newdataarray = function(dataarray, otherdataarray, *wargs, **wkwargs)
-            try: newdatakey = kwargs['newdatakey'](datakey, otherdatakey)
-            except KeyError: newdatakey = datakey            
-            try: newvariables = {newdatakey:kwargs['newvariable'](variables[datakey], othervariables[otherdatakey], wargs, wkwargs)}
-            except KeyError: newvariables = {}  
-            try: newname = wkwargs.get('name', kwargs['newname'](name, othername))
-            except KeyError: newname = name
-            variables.update(newvariables)
-            newdataset = newdataarray.to_dataset(name=newdatakey)  
-            newdataset.attrs = dataset.attrs            
-            return TableClass(data=newdataset, variables=variables, name=newname)
+            dataset, dataarrays, variables = table.dataset, table.dataarrays, table.variables.copy()
+
+            newdatakey = newdatakey_function(datakey, otherdatakey)
+            newvariable = newvariable_function(variables[datakey], variables[otherdatakey], args, kwargs)
+            newdataarray = function(dataarrays[datakey], dataarrays[otherdatakey], *args, **kwargs)
+            
+            newdataset = xr.merge([dataset, newdataarray.to_dataset(name=newdatakey)])   
+            variables.update({newdatakey:newvariable})
+            newdataset.attrs = dataset.attrs          
+            return TableClass(data=newdataset, variables=variables)
       
         update_wrapper(wrapper, function)
-        OPERATIONS[function.__name__] = wrapper
         return wrapper
-    return decorator
+    return decorator    
 
 
-@operation(newdatakey = lambda tablekey, otherkey: '*'.join([tablekey, otherkey]),
-           newname = lambda tablename, othername: '*'.join([tablename, othername]),
-           newvariable = lambda tablevar, othervar, args, kwargs: tablevar.operation(othervar, *args, method='multiply', **kwargs))
+def external_operation(function):
+    def wrapper(table, other, *args, **kwargs):
+        TableClass = table.__class__
+        assert table.datakeys == other.datakeys
+        assert table.variables == other.variables
+        
+        newdataarrays = {datakey:function(dataarray, otherdataarray, *args, **kwargs) for datakey, dataarray, otherdataarray in zip(table.datakeys, table.dataarrays, other.dataarrays)}
+        newdataset = xr.merge([newdataarray.to_dataset(name=datakey) for datakey, newdataarray in newdataarrays.items()])          
+        return TableClass(data=newdataset, variables=table.variables)
+    
+    update_wrapper(wrapper, function)
+    return wrapper
+
+
+@internal_operation(newdatakey_function = lambda tablekey, otherkey: '*'.join([tablekey, otherkey]),
+                    newvariable_function = lambda tablevar, othervar, args, kwargs: tablevar.operation(othervar, *args, method='multiply', **kwargs))
 def multiply(dataarray, otherdataarray, *args, **kwargs): 
     assert all([dataarray.attrs[key] == otherdataarray.attrs[key] for key in dataarray.attrs.keys() if key in otherdataarray.attrs.keys()])       
     newdataarray = dataarray * otherdataarray
-    scope = dataarray.attrs
+    scope = dataarray.attrs.copy()
     scope.update(otherdataarray.attrs)
     newdataarray.attrs = scope
-    newdataarray.name = dataarray.name
     return newdataarray
 
 
-@operation(newdatakey = lambda tablekey, otherkey: '/'.join([tablekey, otherkey]),
-           newname = lambda tablename, othername: '/'.join([tablename, othername]),
-           newvariable = lambda tablevar, othervar, args, kwargs: tablevar.operation(othervar, *args, method='divide', **kwargs))
+@internal_operation(newdatakey_function = lambda tablekey, otherkey: '/'.join([tablekey, otherkey]),
+                    newvariable_function = lambda tablevar, othervar, args, kwargs: tablevar.operation(othervar, *args, method='divide', **kwargs))
 def divide(dataarray, otherdataarray, *args, **kwargs):
     assert all([dataarray.attrs[key] == otherdataarray.attrs[key] for key in dataarray.attrs.keys() if key in otherdataarray.attrs.keys()])         
     newdataarray = dataarray / otherdataarray
-    scope = dataarray.attrs
+    scope = dataarray.attrs.copy()
     scope.update(otherdataarray.attrs)
     newdataarray.attrs = scope
-    newdataarray.name = dataarray.name
     return newdataarray
 
 
-@operation
-def combine(dataarray, otherdataarray, *args, onscope, **kwargs):
-    newdataxarray = xr.concat([dataarray, otherdataarray], pd.Index([dataarray.attrs[onscope], otherdataarray.attrs[onscope]], name=onscope))
-    newdataxarray.name = dataarray.name
-    return newdataxarray
+#@external_operation
+#def combine(dataarray, otherdataarray, *args, onscope, **kwargs):
+#    newdataxarray = xr.concat([dataarray, otherdataarray], pd.Index([dataarray.attrs[onscope], otherdataarray.attrs[onscope]], name=onscope))
+#    newdataxarray.name = dataarray.name
+#    return newdataxarray
 
 
-@operation
-def merge(dataarray, otherdataarray, *args, onaxis, **kwargs):
-    newdataxarray = xr.concat([dataarray, otherdataarray], dim=onaxis)
-    newdataxarray.name = dataarray.name
-    return newdataxarray
+#@external_operation
+#def merge(dataarray, otherdataarray, *args, onaxis, **kwargs):
+#    newdataxarray = xr.concat([dataarray, otherdataarray], dim=onaxis)
+#    newdataxarray.name = dataarray.name
+#    return newdataxarray
 
 
-@operation
-def append(dataarray, otherdataarray, *args, toaxis, **kwargs):
-    otherdataarray = otherdataarray.expand_dims(toaxis)
-    otherdataarray.coords[toaxis] = pd.Index([otherdataarray.attrs.pop(toaxis)], name=toaxis)
-    newdataxarray = xr.concat([dataarray, otherdataarray], dim=toaxis)
-    newdataxarray.name = dataarray.name
-    return newdataxarray
+#@external_operation
+#def append(dataarray, otherdataarray, *args, toaxis, **kwargs):
+#    otherdataarray = otherdataarray.expand_dims(toaxis)
+#    otherdataarray.coords[toaxis] = pd.Index([otherdataarray.attrs.pop(toaxis)], name=toaxis)
+#    newdataxarray = xr.concat([dataarray, otherdataarray], dim=toaxis)
+#    newdataxarray.name = dataarray.name
+#    return newdataxarray
+
+
+def layer(table, other, *args, **kwargs):
+    TableClass = table.__class__
+    dataset, variables, attrs = table.dataset, table.variables, table.dataset.attrs.copy()
+    otherdataset, othervariables, otherattrs = other.dataset, other.variables, other.dataset.attrs
+    
+    assert all([datakey not in other.datakeys for datakey in table.datakeys])
+    assert table.headerkeys == other.headerkeys
+    newdatakeys = (*table.datakeys, *other.datakeys)    
+    newheaderkeys = table.headerkeys
+    newscopekeys = tuple([scopekey for scopekey in set([*table.scopekeys, *other.scopekeys]) if scopekey not in (*newdatakeys, *newheaderkeys)])
+    
+    variablefunction = lambda keys: {key:(variables[key] if key in variables.keys() else othervariables[key]) for key in keys}
+    newvariables = variablefunction(newscopekeys)
+    newvariables.update(variablefunction(newheaderkeys))
+    newvariables.update({datakey:variables[datakey] for datakey in table.datakeys})
+    newvariables.update({datakey:othervariables[datakey] for datakey in other.datakeys})
+    
+    attrs.update(otherattrs)   
+    newdataset = xr.merge([dataset, otherdataset])  
+    newdataset.attrs = {scopekey:scopevalue for scopekey, scopevalue in attrs.items() if scopekey not in newdatakeys}
+    return TableClass(data=newdataset, variables=newvariables)    
+
+
+
+
+
+
+
+
+
 
 
 

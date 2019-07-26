@@ -17,7 +17,7 @@ __copyright__ = "Copyright 2018, Jack Kirby Cook"
 __license__ = ""
 
 
-class Calculation(dict):
+class Calculation(list):
     def __new__(cls, *args, webapi, variables, **kwargs):
         def decorator(function): 
             def wrapper(*wargs, **wkwargs): return function(*wargs, **wkwargs)
@@ -31,38 +31,36 @@ class Calculation(dict):
 
     def __call__(self, *args, **kwargs):
         self.webapi.reset()
-        tables = {key:value(*args, **kwargs) for key, value in self.items()}
-        return self.function(*list(tables.values()), *args, **kwargs)
+        tables = [function(*args, **kwargs) for function in self]
+        return self.function(*tables, *args, **kwargs)
     
-    def register(self, tablekey, *args, name, **kwargs): 
+    def register(self, *args, **kwargs): 
         def decorator(function):
             def wrapper(*wargs, **wkwargs):
                 self.setwebapi(*args, **kwargs)                                                       
                 dataframe = self.webapi(*wargs, **wkwargs)
-                flattable = tbls.FlatTable(data=dataframe, variables=self.variables, name=name)
+                flattable = tbls.FlatTable(data=dataframe, variables=self.variables)
                 arraytable = flattable.unflatten(*self.tablekeys(*args, **kwargs))
                 for axis in arraytable.headerkeys: arraytable = arraytable.sort(axis, ascending=True)
                 return function(arraytable, *wargs, **wkwargs)            
             
             update_wrapper(wrapper, function)        
-            self[tablekey] = wrapper
+            self.append(wrapper)
             return wrapper
         return decorator
     
-    def setwebapi(self, *args, universe, index, header,  scope={}, **kwargs):
+    def setwebapi(self, universe, index, header, *args, scope={}, **kwargs):
         self.webapi.reset()
         self.webapi.setitems(universe=universe, index=index, header=header, **scope)
         print(str(self.webapi), '\n')        
     
-    def tablekeys(self, *args, universe, index, header, headers=[], scope={}, **kwargs):
+    def tablekeys(self, universe, index, header, *args, headers=[], scope={}, **kwargs):
         datakeys = [universe]
         headerkeys = [index, header, *headers]
         scopekeys = list(scope.keys())        
         return [datakeys, headerkeys, scopekeys]
     
-    
 
-    
     
     
     
