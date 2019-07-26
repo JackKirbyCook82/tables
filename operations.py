@@ -7,122 +7,92 @@ Created on Sun Jun 2 2019
 """
 
 from functools import update_wrapper
-from itertools import chain
 import pandas as pd
 import xarray as xr
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
-__all__ = []
+__all__ = ['multiply', 'divide', 'combine', 'merge', 'append']
 __copyright__ = "Copyright 2018, Jack Kirby Cook"
 __license__ = ""
 
 
 OPERATIONS = {}
 
-def operation(mainfunction):    
-    _registry = {}
-    
-    def register(key): 
-        def register_decorator(regfunction): 
-            _registry[key] = regfunction
-            def register_wrapper(*args, **kwargs): 
-                return regfunction(*args, **kwargs) 
-            return register_wrapper 
-        return register_decorator 
-    
-    def wrapper(table, other, *args, **kwargs):
-        TableClass = table.__class__
-        operatefunc = lambda func, key: func(getattr(table, key), getattr(other, key), *args, dim=table.dim, shape=table.shape, **kwargs)
-        operated = {key:operatefunc(function, key) for key, function in _registry.items()}
-        contents = table.todict()
-        contents.update(operated)
-        contents.update({'name':kwargs.get('name', table.name)})
-        return TableClass(**contents)
-    
-    wrapper.register = register 
-    update_wrapper(wrapper, mainfunction)
-    OPERATIONS[mainfunction.__name__] = wrapper
-    return wrapper
+_aslist = lambda items: [items] if not isinstance(items, (list, tuple)) else list(items)
+
+
+def operation(*args, **kwargs):
+    def decorator(function):
+        def wrapper(table, other, *wargs, datakey, otherdatakey, **wkwargs):
+            TableClass = table.__class__       
+            dataset, dataarray, variables, name = table.dataset, table.dataarrays[datakey], table.variables.copy(), table.name
+            otherdataarray, othervariables, othername = other.dataarrays[otherdatakey], other.variables, other.name
+            newdataarray = function(dataarray, otherdataarray, *wargs, **wkwargs)
+            try: newdatakey = kwargs['newdatakey'](datakey, otherdatakey)
+            except KeyError: newdatakey = datakey            
+            try: newvariables = {newdatakey:kwargs['newvariable'](variables[datakey], othervariables[otherdatakey], wargs, wkwargs)}
+            except KeyError: newvariables = {}  
+            try: newname = wkwargs.get('name', kwargs['newname'](name, othername))
+            except KeyError: newname = name
+            variables.update(newvariables)
+            newdataset = newdataarray.to_dataset(name=newdatakey)  
+            newdataset.attrs = dataset.attrs            
+            return TableClass(data=newdataset, variables=variables, name=newname)
+      
+        update_wrapper(wrapper, function)
+        OPERATIONS[function.__name__] = wrapper
+        return wrapper
+    return decorator
+
+
+@operation(newdatakey = lambda tablekey, otherkey: '*'.join([tablekey, otherkey]),
+           newname = lambda tablename, othername: '*'.join([tablename, othername]),
+           newvariable = lambda tablevar, othervar, args, kwargs: tablevar.operation(othervar, *args, method='multiply', **kwargs))
+def multiply(dataarray, otherdataarray, *args, **kwargs): 
+    assert all([dataarray.attrs[key] == otherdataarray.attrs[key] for key in dataarray.attrs.keys() if key in otherdataarray.attrs.keys()])       
+    newdataarray = dataarray * otherdataarray
+    scope = dataarray.attrs
+    scope.update(otherdataarray.attrs)
+    newdataarray.attrs = scope
+    newdataarray.name = dataarray.name
+    return newdataarray
+
+
+@operation(newdatakey = lambda tablekey, otherkey: '/'.join([tablekey, otherkey]),
+           newname = lambda tablename, othername: '/'.join([tablename, othername]),
+           newvariable = lambda tablevar, othervar, args, kwargs: tablevar.operation(othervar, *args, method='divide', **kwargs))
+def divide(dataarray, otherdataarray, *args, **kwargs):
+    assert all([dataarray.attrs[key] == otherdataarray.attrs[key] for key in dataarray.attrs.keys() if key in otherdataarray.attrs.keys()])         
+    newdataarray = dataarray / otherdataarray
+    scope = dataarray.attrs
+    scope.update(otherdataarray.attrs)
+    newdataarray.attrs = scope
+    newdataarray.name = dataarray.name
+    return newdataarray
 
 
 @operation
-def multiply(*args, **kwargs): pass
-
-@multiply.register('data')
-def multiply_data(xarray, other, *args, **kwargs): 
-    assert all([xarray.attrs[key] == other.attrs[key] for key in xarray.attrs.keys() if key in other.attrs.keys()])   
-    newxarray = xarray * other
-    scope = xarray.attrs
-    scope.update(other.attrs)
-    newxarray.attrs = scope
-    newxarray.name = '*'.join([xarray.name, other.name])
-    return newxarray
-
-@multiply.register('variables')
-def multiply_variables(variables, others, *args, dim, **kwargs):
-    VariablesClass = variables.__class__
-    datakey = '*'.join([list(variables.keys())[0], list(others.keys())[0]])
-    datavar = variables[0].operation(variables[0], *args, method='multiply', **kwargs)
-    hdrvars = variables[slice(1, 1+dim)]
-    assert hdrvars == others[slice(1, 1+dim)]
-    scopevars = variables[slice(1+dim, None)].update(others[slice(1+dim, None)])
-    return VariablesClass([(key, value) for key, value in zip(chain((datakey,), hdrvars.keys(), scopevars.keys()), chain((datavar,), hdrvars.values(), scopevars.values()))])
+def combine(dataarray, otherdataarray, *args, onscope, **kwargs):
+    newdataxarray = xr.concat([dataarray, otherdataarray], pd.Index([dataarray.attrs[onscope], otherdataarray.attrs[onscope]], name=onscope))
+    newdataxarray.name = dataarray.name
+    return newdataxarray
 
 
 @operation
-def divide(*args, **kwargs): pass
-
-@divide.register('data')
-def divide_data(xarray, other, *args, **kwargs):
-    assert all([xarray.attrs[key] == other.attrs[key] for key in xarray.attrs.keys() if key in other.attrs.keys()])    
-    newxarray = xarray / other 
-    scope = xarray.attrs
-    scope.update(other.attrs)
-    newxarray.attrs = scope
-    newxarray.name = '/'.join([xarray.name, other.name])
-    return newxarray
-
-@divide.register('variables')
-def divide_variables(variables, others, *args, dim, **kwargs):
-    VariablesClass = variables.__class__
-    datakey = '/'.join([list(variables.keys())[0], list(others.keys())[0]])
-    datavar = variables[0].operation(variables[0], *args, method='divide', **kwargs)
-    hdrvars = variables[slice(1, 1+dim)]
-    assert hdrvars == others[slice(1, 1+dim)]
-    scopevars = variables[slice(1+dim, None)].update(others[slice(1+dim, None)])
-    return VariablesClass([(key, value) for key, value in zip(chain((datakey,), hdrvars.keys(), scopevars.keys()), chain((datavar,), hdrvars.values(), scopevars.values()))])
-
-@operation
-def combine(*args, **kwargs): pass
-
-@combine.register('data')
-def combine_data(xarray, other, *args, onscope, **kwargs):
-    newxarray = xr.concat([xarray, other], pd.Index([xarray.attrs[onscope], other.attrs[onscope]], name=onscope))
-    newxarray.name = xarray.name
-    return {'data':newxarray}
+def merge(dataarray, otherdataarray, *args, onaxis, **kwargs):
+    newdataxarray = xr.concat([dataarray, otherdataarray], dim=onaxis)
+    newdataxarray.name = dataarray.name
+    return newdataxarray
 
 
 @operation
-def merge(*args, **kwargs): pass
-
-@merge.register('data')
-def merge_data(xarray, other, *args, onaxis, **kwargs):
-    newxarray = xr.concat([xarray, other], dim=onaxis)
-    newxarray.name = xarray.name
-    return {'data':newxarray}
-
-
-@operation
-def append(*args, **kwargs): pass
-
-@append.register('data')
-def append_data(xarray, other, *args, toaxis, **kwargs):
-    other = other.expand_dims(toaxis)
-    other.coords[toaxis] = pd.Index([other.attrs.pop(toaxis)], name=toaxis)
-    newxarray = xr.concat([xarray, other], dim=toaxis)
-    newxarray.name = xarray.name
-    return {'data':newxarray}
+def append(dataarray, otherdataarray, *args, toaxis, **kwargs):
+    otherdataarray = otherdataarray.expand_dims(toaxis)
+    otherdataarray.coords[toaxis] = pd.Index([otherdataarray.attrs.pop(toaxis)], name=toaxis)
+    newdataxarray = xr.concat([dataarray, otherdataarray], dim=toaxis)
+    newdataxarray.name = dataarray.name
+    return newdataxarray
 
 
 

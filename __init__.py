@@ -9,6 +9,7 @@ Created on Fri Mar 15 2019
 from abc import ABC, abstractmethod
 import pandas as pd
 import numpy as np
+import xarray as xr
 from functools import update_wrapper
 
 from utilities.dataframes import dataframe_fromxarray
@@ -58,132 +59,27 @@ class TableBase(ABC):
     @property
     def tablename(self): return ' '.join([self.__name.upper(), 'as', self.__class__.__name__.upper()])    
     
-    def __str__(self): return '\n'.join([_buffer(), '\n\n'.join([self.tablename, self.strings, 'Dim={}, Shape={}'.format(self.dim, self.shape)]), _buffer()])        
+    def __str__(self): return '\n'.join([_buffer(), '\n\n'.join([self.tablename, self.strings, 'Layers={}, Dims={}, Shape={}'.format(self.layers, self.dim, self.shape)]), _buffer()])        
     def __len__(self): return self.dim    
     
     @abstractmethod
     def strings(self): pass
+    @abstractmethod
+    def layers(self): pass
     @abstractmethod
     def dim(self): pass
     @abstractmethod
     def shape(self): pass  
 
     @abstractmethod
-    def todict(self): pass
-    @abstractmethod
     def items(self): pass
+    @abstractmethod
+    def todict(self): pass
+
  
-
-class ArrayTable(TableBase):
-    dataformat = 'DATA = {key}:\n{values}'
-    headerformat = 'HEADER[{index}] = {key}:\n{values}'
-    scopeformat = 'SCOPE[{index}] = {key}: {values}'    
-    variableformat = 'VARIABLE[{index}] = {key}: {values}' 
-    
-    def __init__(self, *args, variables, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.__variables = variables.__class__([(key, variables[key]) for key in (self.datakey, *self.headerkeys, *self.scopekeys)])
-        
-    @property
-    def xarray(self): return self.data  
-    @property
-    def narray(self): return self.data.values
-    @property
-    def variables(self): return self.__variables
-    
-    @property
-    def dim(self): return len(self.xarray.dims)
-    @property
-    def shape(self): return self.xarray.shape
-    
-    @property
-    def datakey(self): return self.xarray.name
-    @property
-    def headerkeys(self): return self.xarray.dims
-    def headervalues(self, key): 
-        if isinstance(key, int): return self.headervalues(self.headerkeys[key])
-        elif isinstance(key, str): return list(self.xarray.coords[key].values)
-        else: raise TypeError(key)
-    @property
-    def headers(self): return {key:self.headervalues(key) for key in self.headerkeys}
-    @property
-    def scopekeys(self): return tuple(self.xarray.attrs.keys())
-    def scopevalue(self, key): return self.xarray.attrs[key]
-    @property
-    def scopevalues(self): return list(self.xarray.attrs.values())
-    @property
-    def scope(self): return {key:self.scopevalue(key) for key in self.scopekeys}
-        
-    def axiskey(self, axis): return self.xarray.dim[axis] if isinstance(axis, int) else axis
-    def axisindex(self, axis): return self.xarray.get_axis_num(axis) if isinstance(axis, str) else axis
-    def items(self): return [self.datakey, *self.headerkeys, *self.scopekeys]
-    def todict(self): return dict(data=self.xarray, datakey=self.datakey, name=self.name, variables=self.variables)
-    
-    @property
-    def strings(self): return '\n\n'.join([self.datastring, self.headerstrings, self.scopestrings, self.variablestrings])
-    @property
-    def datastring(self): return self.dataformat.format(key=uppercase(self.datakey, withops=True), values=self.xarray.values)
-    @property
-    def headerstrings(self): return '\n'.join([self.headerformat.format(index=index, key=uppercase(axis, withops=True), values=self.xarray.coords[axis].values) for index, axis in zip(range(len(self.headerkeys)), self.headerkeys)])
-    @property
-    def scopestrings(self): return '\n'.join([self.scopeformat.format(index=index, key=uppercase(key, withops=True), values=values) for index, key, values in zip(range(len(self.scopekeys)), self.scopekeys, self.scopevalues)])
-    @property
-    def variablestrings(self): return '\n'.join([self.variableformat.format(index=index, key=uppercase(key, withops=True), values=values.name()) for index, key, values in zip(range(len(self.variables)), self.variables.keys(), self.variables.values())])  
-
-    def __add__(self, other): return self.add(other)
-    def __sub__(self, other): return self.subtract(other)
-    def __mul__(self, other): return self.multiply(other)
-    def __truediv__(self, other): return self.divide(other)
-    
-    def __getitem__(self, items): 
-        assert isinstance(items, dict)
-        indexitems = {key:value for key, value in items.items() if isinstance(value, int)}
-        keyitems = {key:value for key, value in items.items() if isinstance(value, str)}
-        sliceitems = {key:value for key, value in items.items() if isinstance(value, slice)}
-        assert len(indexitems) + len(sliceitems) + len(keyitems) == len(items)
-        assert all([key in self.headerkeys for key in keyitems.keys()])
-        assert all([value in self.headervalues(key) for key, value in keyitems.items()])
-        newxarray = self.xarray[sliceitems]
-        keyitems.update({key:list(self.headervalues(index)) for key, index in indexitems.items()})
-        newxarray = newxarray[indexitems].loc[keyitems]
-        newxarray.attrs.update(keyitems)
-        newxarray.name = self.xarray.name
-        return self.__class__(data=newxarray, datakey=self.datakey, name=self.name, variables=self.variables)
-           
-    def __getattr__(self, attr): 
-        try: operation_function = OPERATIONS[attr]
-        except KeyError: raise AttributeError('{}.{}'.format(self.__class__.__name__, attr))
-        
-        def wrapper(other, *args, **kwargs): return operation_function(self, other, *args, **kwargs)
-        update_wrapper(wrapper, operation_function)   
-        return wrapper
-
-    def sort(self, axis, ascending=True):
-        newxarray = self.xarray
-        newxarray.coords[axis] = pd.Index([self.variables[axis].fromstr(item) for item in newxarray.coords[axis].values])
-        newxarray = newxarray.sortby(axis, ascending=ascending)
-        newxarray.coords[axis] = pd.Index([str(item) for item in newxarray.coords[axis].values], name=axis)
-        newxarray.name = self.xarray.name
-        return self.__class__(data=newxarray, datakey=self.datakey, name=self.name, variables=self.variables)
-
-    def flatten(self): 
-        dataframe = dataframe_fromxarray(self.xarray)
-        dataframe[self.datakey] = dataframe[self.datakey].apply(lambda x: str(self.variables[self.datakey](x)))
-        return FlatTable(data=dataframe, name=self.name, variables=self.variables)     
-    
-    def toframe(self, index=[]):
-        index = _aslist(index)
-        columns = [item for item in self.headerkeys if item not in index]       
-        dataframe = self.xarray.to_dataframe()[self.datakey].to_frame().reset_index()  
-        dataframe = pd.pivot_table(dataframe, columns=columns ,index=index, values=self.datakey)       
-        setattr(dataframe, 'scope', self.xarray.attrs)
-        dataframe.name = self.datakey
-        return dataframe
-
-
 class FlatTable(TableBase):
     dataformat = 'DATA:\n{values}' 
-    variableformat = 'VARIABLE[{index}] = {key}: {values}' 
+    variableformat = 'VARIABLE[{index}] = {key}: {name}' 
 
     def __init__(self, *args, data, variables, **kwargs):
         try: dataframe = data.to_frame()
@@ -193,12 +89,14 @@ class FlatTable(TableBase):
             except: pass
         super().__init__(*args, data=dataframe, **kwargs)
         self.__variables = variables.__class__({key:value for key, value in variables.items() if key in self.items()})
-            
+                   
+    @property
+    def variables(self): return self.__variables        
     @property
     def dataframe(self): return self.data
-    @property
-    def variables(self): return self.__variables
 
+    @property
+    def layers(self): return 1
     @property
     def dim(self): return self.dataframe.ndim
     @property
@@ -212,7 +110,7 @@ class FlatTable(TableBase):
     @property
     def datastring(self): return self.dataformat.format(values=str(self.dataframe))    
     @property
-    def variablestrings(self): return '\n'.join([self.variableformat.format(index=index, key=uppercase(key, withops=True), values=values.name()) for index, key, values in zip(range(len(self.variables)), self.variables.keys(), self.variables.values())])  
+    def variablestrings(self): return '\n'.join([self.variableformat.format(index=index, key=uppercase(key, withops=True), name=values.name()) for index, key, values in zip(range(len(self.variables)), self.variables.keys(), self.variables.values())])  
 
     def __getitem__(self, key): 
         return self.__class__(data=self.dataframe[key], name=self.name, variables=self.variables)
@@ -245,16 +143,123 @@ class FlatTable(TableBase):
         dataframe[key] = dataframe[key].apply(str)
         return dict(data=dataframe, variables=variables)    
     
-    def unflatten(self, datakey, headerkeys, scopekeys):
-        headerkeys, scopekeys = [_aslist(item) for item in (headerkeys, scopekeys)]
+    def unflatten(self, datakeys, headerkeys, scopekeys):
+        datakeys, headerkeys, scopekeys = [_aslist(item) for item in (datakeys, headerkeys, scopekeys)]
         assert all([len(set(self.dataframe[key].values)) == 1 for key in scopekeys if key in self.dataframe.columns])
         headerkeys.sort(key=lambda key: len(set(self.dataframe[key].values)))
-        dataframe = self.dataframe[[datakey, *headerkeys, *scopekeys]]
-        try: dataframe.loc[:, datakey] = dataframe[datakey].apply(lambda x: self.variables[datakey].fromstr(x).value)
-        except: pass
-        xarray = xarray_fromdataframe(dataframe, datakey=datakey, headerkeys=headerkeys, scopekeys=scopekeys)
-        return ArrayTable(data=xarray, datakey=datakey, name=self.name, variables=self.variables)
+        dataframe = self.dataframe[[*datakeys, *headerkeys, *scopekeys]]
+        for datakey in datakeys:
+            try: dataframe.loc[:, datakey] = dataframe[datakey].apply(lambda x: self.variables[datakey].fromstr(x).value)
+            except: pass
+        xarray = xarray_fromdataframe(dataframe, axekeys=headerkeys, scopekeys=scopekeys, forcedataset=True)
+        return ArrayTable(data=xarray, name=self.name, variables=self.variables)
+
+
+class ArrayTable(TableBase):
+    dataformat = 'DATA[{index}] = {key}:\n{values}'
+    headerformat = 'HEADER[{index}] = {key}:\n{values}'
+    scopeformat = 'SCOPE[{index}] = {key}: {values}'    
+    variableformat = 'VARIABLE[{index}] = {key}: {name}' 
     
+    def __init__(self, *args, data, variables, **kwargs):
+        assert isinstance(data, (xr.Dataset))
+        super().__init__(*args, data=data, **kwargs)
+        self.__variables = variables.__class__([(key, variables[key]) for key in (*self.datakeys, *self.headerkeys, *self.scopekeys)])
+                
+    @property
+    def variables(self): return self.__variables        
+    @property
+    def dataset(self): return self.data  
+    @property
+    def dataarrays(self): 
+        items = {key:self.dataset[key] for key in self.datakeys}
+        for item in items.values(): item.attrs = self.dataset.attrs
+        return items
+    
+    @property
+    def layers(self): return len(self.dataset.data_vars)
+    @property
+    def dim(self): return len(self.dataset.dims)
+    @property
+    def shape(self): return tuple(self.dataset.sizes.values())
+    
+    @property
+    def datakeys(self): return tuple(self.dataset.data_vars.keys())
+    @property
+    def headerkeys(self): return self.dataset.dims
+    @property
+    def scopekeys(self): return tuple(self.dataset.attrs.keys())
+    
+    def items(self): return [*self.datakey, *self.headerkeys, *self.scopekeys]
+    def todict(self): return dict(data=self.dataset, name=self.name, variables=self.variables)
+    
+    @property
+    def strings(self): return '\n\n'.join([self.datastrings, self.headerstrings, self.scopestrings, self.variablestrings])
+    @property
+    def datastrings(self): return '\n'.join([self.dataformat.format(index=index, key=uppercase(key, withops=True), values=self.dataset.data_vars[key].values) for index, key in zip(range(len(self.datakeys)), self.datakeys)])
+    @property
+    def headerstrings(self): return '\n'.join([self.headerformat.format(index=index, key=uppercase(axis, withops=True), values=self.dataset.coords[axis].values) for index, axis in zip(range(len(self.headerkeys)), self.headerkeys)])
+    @property
+    def scopestrings(self): return '\n'.join([self.scopeformat.format(index=index, key=uppercase(key, withops=True), values=self.dataset.attrs[key]) for index, key in zip(range(len(self.scopekeys)), self.scopekeys)])
+    @property
+    def variablestrings(self): return '\n'.join([self.variableformat.format(index=index, key=uppercase(key, withops=True), name=values.name()) for index, key, values in zip(range(len(self.variables)), self.variables.keys(), self.variables.values())])  
+
+    def __add__(self, other): return self.add(other)
+    def __sub__(self, other): return self.subtract(other)
+    def __mul__(self, other): return self.multiply(other)
+    def __truediv__(self, other): return self.divide(other)
+    
+    def __getitem__(self, items): 
+        if isinstance(items, (list, tuple)):
+            assert all([item in self.datakeys for item in items])
+            newdataset = self.dataset[items]
+        elif isinstance(items, str):
+            assert items in self.datakeys
+            newdataset = self.dataset[items].to_dataset(name=items)
+        elif isinstance(items, dict):
+            indexitems = {key:value for key, value in items.items() if isinstance(value, int)}
+            keyitems = {key:value for key, value in items.items() if isinstance(value, str)}
+            sliceitems = {key:value for key, value in items.items() if isinstance(value, slice)}
+            assert len(indexitems) + len(sliceitems) + len(keyitems) == len(items)
+            assert all([key in self.headerkeys for key in keyitems.keys()])
+            assert all([value in self.headervalues(key) for key, value in keyitems.items()])
+            newdataset = self.dataset[sliceitems]
+            keyitems.update({key:list(self.headervalues(index)) for key, index in indexitems.items()})
+            newdataset = newdataset[indexitems].loc[keyitems]
+            newdataset.attrs.update(keyitems)           
+        else: raise TypeError(type(items))
+        return self.__class__(data=newdataset, name=self.name, variables=self.variables)
+           
+    def __getattr__(self, attr): 
+        try: operation_function = OPERATIONS[attr]
+        except KeyError: raise AttributeError('{}.{}'.format(self.__class__.__name__, attr))
+        
+        def wrapper(other, *args, **kwargs): return operation_function(self, other, *args, **kwargs)
+        update_wrapper(wrapper, operation_function)   
+        return wrapper
+
+    def sort(self, axis, ascending=True):
+        newdataset = self.dataset
+        newdataset.coords[axis] = pd.Index([self.variables[axis].fromstr(item) for item in newdataset.coords[axis].values])
+        newdataset = newdataset.sortby(axis, ascending=ascending)
+        newdataset.coords[axis] = pd.Index([str(item) for item in newdataset.coords[axis].values], name=axis)
+        newdataset.attrs = self.dataset.attrs
+        return self.__class__(data=newdataset, name=self.name, variables=self.variables)
+
+    def flatten(self): 
+        dataframe = dataframe_fromxarray(self.dataset) 
+        for datakey in self.datakeys: dataframe[datakey] = dataframe[datakey].apply(lambda x: str(self.variables[datakey](x)))
+        return FlatTable(data=dataframe, name=self.name, variables=self.variables)     
+    
+    #def toframe(self, index=[]):
+    #    index = _aslist(index)
+    #    columns = [item for item in self.headerkeys if item not in index]       
+    #    dataframe = self.xarray.to_dataframe()[self.datakey].to_frame().reset_index()  
+    #    dataframe = pd.pivot_table(dataframe, columns=columns ,index=index, values=self.datakey)       
+    #    setattr(dataframe, 'scope', self.xarray.attrs)
+    #    dataframe.name = self.datakey
+    #    return dataframe
+ 
 
 class GeoTable(TableBase):
     dataformat = 'DATA:\n{values}'
@@ -270,6 +275,8 @@ class GeoTable(TableBase):
     @property
     def index(self): return self.geodataframe.index.values
     
+    @property
+    def layer(self): return 1
     @property      
     def dim(self): return self.geodataframe.ndim
     @property
@@ -280,9 +287,8 @@ class GeoTable(TableBase):
     @property
     def datastring(self): return self.dataformat.format(values=str(self.geodataframe))  
 
-    def todict(self): return dict(data=self.geodataframe, name=self.name)
     def items(self): return [column for column in self.geodataframe.columns]   
-    
+    def todict(self): return dict(data=self.geodataframe, name=self.name)
 
     
     

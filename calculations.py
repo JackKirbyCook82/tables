@@ -32,7 +32,7 @@ class Calculation(dict):
     def __call__(self, *args, **kwargs):
         self.webapi.reset()
         tables = {key:value(*args, **kwargs) for key, value in self.items()}
-        return self.function(tables, *args, **kwargs)
+        return self.function(*list(tables.values()), *args, **kwargs)
     
     def register(self, tablekey, *args, name, **kwargs): 
         def decorator(function):
@@ -55,10 +55,10 @@ class Calculation(dict):
         print(str(self.webapi), '\n')        
     
     def tablekeys(self, *args, universe, index, header, headers=[], scope={}, **kwargs):
-        datakey = universe
+        datakeys = [universe]
         headerkeys = [index, header, *headers]
         scopekeys = list(scope.keys())        
-        return [datakey, headerkeys, scopekeys]
+        return [datakeys, headerkeys, scopekeys]
     
     
 
