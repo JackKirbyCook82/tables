@@ -17,7 +17,7 @@ import variables.varrays as var
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
-__all__ = ['Scale', 'Reduction', 'WeightedAverage', 'Cumulate', 'Uncumulate', 'MovingAverage', 'Consolidate', 'Unconsolidate', 'Boundary', 'Interpolate', 'Inversion']
+__all__ = ['Scale', 'Reduction', 'WeightedAverage', 'Cumulate', 'Uncumulate', 'MovingAverage', 'Consolidate', 'Unconsolidate', 'Boundary', 'Interpolate', 'Inversion', 'Group']
 __copyright__ = "Copyright 2018, Jack Kirby Cook"
 __license__ = ""
 
@@ -208,8 +208,29 @@ class Inversion(object):
         return xarray        
 
 
-
-
+class Group(object):
+    required_hyperparms = ('groups',)
+    default_hyperparms = {'right':True}
+    
+    def __init__(self, *args, **hyperparms): 
+        self.hyperparms = {key:value for key, value in self.default_hyperparms.items()}
+        self.hyperparms.update(hyperparms)  
+        assert all([key in self.hyperparms.keys() for key in self.required_hyperparms])            
+    def __repr__(self): return '{}({})'.format(self.__class__.__name__, self.hyperparms)      
+    
+    def __call__(self, table, *args, column, **kwargs):
+        TableClass = table.__class__
+        dataframe, variables = table.dataframe, table.variables.copy()
+        newdataframe = self.execute(*args, dataframe=dataframe, column=column, variables=variables, **self.hyperparms, **kwargs)
+        variables.update({column:self.variable(*args, variable=variables[column], **self.hyperparms, **kwargs)})
+        return TableClass(data=newdataframe, variables=variables)
+        
+    def execute(self, *args, dataframe, column, variables, groups, right, **kwargs):
+        dataframe[column] = dataframe[column].apply(lambda x: str(variables[column].fromstr(x).group(*args, groups=groups[column], right=right, **kwargs)))
+        return dataframe
+        
+    def variable(self, *args, variable, **kwargs):
+        return variable.unconsolidate(*args, how='group', **kwargs)
 
 
 
