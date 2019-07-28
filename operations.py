@@ -77,27 +77,27 @@ def divide(dataarray, otherdataarray, *args, **kwargs):
     return newdataarray
 
 
-#@external_operation
-#def combine(dataarray, otherdataarray, *args, onscope, **kwargs):
-#    newdataxarray = xr.concat([dataarray, otherdataarray], pd.Index([dataarray.attrs[onscope], otherdataarray.attrs[onscope]], name=onscope))
-#    newdataxarray.name = dataarray.name
-#    return newdataxarray
+@external_operation
+def combine(dataarray, otherdataarray, *args, onscope, **kwargs):
+    newdataarray = xr.concat([dataarray, otherdataarray], pd.Index([dataarray.attrs[onscope], otherdataarray.attrs[onscope]], name=onscope))
+    newdataarray.name = dataarray.name
+    return newdataarray
 
 
-#@external_operation
-#def merge(dataarray, otherdataarray, *args, onaxis, **kwargs):
-#    newdataxarray = xr.concat([dataarray, otherdataarray], dim=onaxis)
-#    newdataxarray.name = dataarray.name
-#    return newdataxarray
+@external_operation
+def merge(dataarray, otherdataarray, *args, onaxis, **kwargs):
+    newdataarray = xr.concat([dataarray, otherdataarray], dim=onaxis)
+    newdataarray.name = dataarray.name
+    return newdataarray
 
 
-#@external_operation
-#def append(dataarray, otherdataarray, *args, toaxis, **kwargs):
-#    otherdataarray = otherdataarray.expand_dims(toaxis)
-#    otherdataarray.coords[toaxis] = pd.Index([otherdataarray.attrs.pop(toaxis)], name=toaxis)
-#    newdataxarray = xr.concat([dataarray, otherdataarray], dim=toaxis)
-#    newdataxarray.name = dataarray.name
-#    return newdataxarray
+@external_operation
+def append(dataarray, otherdataarray, *args, toaxis, **kwargs):
+    otherdataarray = otherdataarray.expand_dims(toaxis)
+    otherdataarray.coords[toaxis] = pd.Index([otherdataarray.attrs.pop(toaxis)], name=toaxis)
+    newdataarray = xr.concat([dataarray, otherdataarray], dim=toaxis)
+    newdataarray.name = dataarray.name
+    return newdataarray
 
 
 def layer(table, other, *args, **kwargs):

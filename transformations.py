@@ -106,6 +106,7 @@ class Cumulate:
         xarray = setheader(xarray, axis, varray)
         return xarray
     
+    
 @Transformation.register('direction', xarray_funcs={'uncumulate':xar.uncumulate}, varray_funcs={'uncumulate':var.uncumulate})
 class Uncumulate: 
     def execute(self, *args, datakey, dataarray, axis, variables, direction, **kwargs):
@@ -116,7 +117,7 @@ class Uncumulate:
         return xarray
     
 
-@Transformation.register('how', 'period', xarray_funcs={'average':xar.movingaverage}, varray_funcs={'average':var.movingaverage, 'total':var.movingtotal, 'bracket':var.movingbracket})
+@Transformation.register('how', 'period', xarray_funcs={'average':xar.movingaverage}, varray_funcs={'average':var.movingaverage, 'total':var.movingtotal, 'bracket':var.movingbracket, 'differential':var.movingdifferential})
 class MovingAverage:
     def execute(self, *args, datakey, dataarray, axis, variables, how, period, **kwargs):
         varray = getheader(dataarray, axis, variables[axis])

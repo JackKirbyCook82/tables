@@ -136,16 +136,21 @@ class FlatTable(TableBase):
         dataframe[key] = dataframe[key].apply(str)
         return dict(data=dataframe, variables=variables)    
     
-    def unflatten(self, datakeys, headerkeys, scopekeys):
+    def unflatten(self, datakeys, headerkeys, scopekeys, *args, **kwargs):
+        assert all([isinstance(item, (str, tuple, list)) for item in (datakeys, headerkeys, scopekeys)])
         datakeys, headerkeys, scopekeys = [_aslist(item) for item in (datakeys, headerkeys, scopekeys)]
+                
+        assert all([key in self.dataframe.columns for key in (*datakeys, *headerkeys, *scopekeys)])        
         assert all([len(set(self.dataframe[key].values)) == 1 for key in scopekeys if key in self.dataframe.columns])
+        
         headerkeys.sort(key=lambda key: len(set(self.dataframe[key].values)))
         dataframe = self.dataframe[[*datakeys, *headerkeys, *scopekeys]]
         for datakey in datakeys:
             try: dataframe.loc[:, datakey] = dataframe[datakey].apply(lambda x: self.variables[datakey].fromstr(x).value)
             except: pass
-        xarray = xarray_fromdataframe(dataframe, axekeys=headerkeys, scopekeys=scopekeys, forcedataset=True)
-        return ArrayTable(data=xarray, variables=self.variables)
+        xarray = xarray_fromdataframe(dataframe, *args, datakeys=datakeys, axekeys=headerkeys, attrkeys=scopekeys, forcedataset=True, **kwargs)
+        variables = {key:value for key, value in self.variables.items() if key in dataframe.columns}
+        return ArrayTable(data=xarray, variables=variables)
 
 
 class ArrayTable(TableBase):
@@ -244,9 +249,9 @@ class ArrayTable(TableBase):
 class GeoTable(TableBase):
     dataformat = 'DATA:\n{values}'
 
-    def __init__(self, *args, geodata, **kwargs):
-        assert all([item in geodata.columns for item in ('geography', 'geometry')])   
-        geodataframe = geodata.set_index('geography', drop=True)  
+    def __init__(self, *args, data, **kwargs):
+        assert all([item in data.columns for item in ('geography', 'geometry')])   
+        geodataframe = data.set_index('geography', drop=True)  
         super().__init__(*args, data=geodataframe, **kwargs)   
 
     @property
@@ -256,7 +261,7 @@ class GeoTable(TableBase):
     def index(self): return self.geodataframe.index.values
     
     @property
-    def layer(self): return 1
+    def layers(self): return 1
     @property      
     def dim(self): return self.geodataframe.ndim
     @property
