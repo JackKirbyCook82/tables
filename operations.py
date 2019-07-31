@@ -25,7 +25,7 @@ def internal_operation(newdatakey_function, newvariable_function):
     def decorator(function):
         def wrapper(table, *args, datakey, otherdatakey, **kwargs):
             TableClass = table.__class__       
-            dataset, dataarrays, variables = table.dataset, table.dataarrays, table.variables.copy()
+            dataset, dataarrays, variables, name = table.dataset, table.dataarrays, table.variables.copy(), table.name
 
             newdatakey = newdatakey_function(datakey, otherdatakey)
             newvariable = newvariable_function(variables[datakey], variables[otherdatakey], args, kwargs)
@@ -34,7 +34,7 @@ def internal_operation(newdatakey_function, newvariable_function):
             newdataset = xr.merge([dataset, newdataarray.to_dataset(name=newdatakey)])   
             variables.update({newdatakey:newvariable})
             newdataset.attrs = dataset.attrs          
-            return TableClass(data=newdataset, variables=variables)
+            return TableClass(data=newdataset, variables=variables, name=kwargs.get('name', name))
       
         update_wrapper(wrapper, function)
         return wrapper
@@ -49,7 +49,7 @@ def external_operation(function):
         
         newdataarrays = {datakey:function(dataarray, otherdataarray, *args, **kwargs) for datakey, dataarray, otherdataarray in zip(table.datakeys, table.dataarrays, other.dataarrays)}
         newdataset = xr.merge([newdataarray.to_dataset(name=datakey) for datakey, newdataarray in newdataarrays.items()])          
-        return TableClass(data=newdataset, variables=table.variables)
+        return TableClass(data=newdataset, variables=table.variables, name=kwargs.get('name', table.name))
     
     update_wrapper(wrapper, function)
     return wrapper
@@ -100,7 +100,7 @@ def append(dataarray, otherdataarray, *args, toaxis, **kwargs):
     return newdataarray
 
 
-def layer(table, other, *args, **kwargs):
+def layer(table, other, *args, name, **kwargs):
     TableClass = table.__class__
     dataset, variables, attrs = table.dataset, table.variables, table.dataset.attrs.copy()
     otherdataset, othervariables, otherattrs = other.dataset, other.variables, other.dataset.attrs
@@ -120,7 +120,7 @@ def layer(table, other, *args, **kwargs):
     attrs.update(otherattrs)   
     newdataset = xr.merge([dataset, otherdataset])  
     newdataset.attrs = {scopekey:scopevalue for scopekey, scopevalue in attrs.items() if scopekey not in newdatakeys}
-    return TableClass(data=newdataset, variables=newvariables)    
+    return TableClass(data=newdataset, variables=newvariables, name=name)    
 
 
 

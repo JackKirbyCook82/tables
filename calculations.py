@@ -34,12 +34,12 @@ class Calculation(list):
         tables = [function(*args, **kwargs) for function in self]
         return self.function(*tables, *args, **kwargs)
     
-    def register(self, *args, **kwargs): 
+    def register(self, name, *args, **kwargs): 
         def decorator(function):
             def wrapper(*wargs, **wkwargs):
                 self.setwebapi(*args, **kwargs)                                                       
                 dataframe = self.webapi(*wargs, **wkwargs)
-                flattable = tbls.FlatTable(data=dataframe, variables=self.variables)
+                flattable = tbls.FlatTable(data=dataframe, variables=self.variables, name=name)
                 arraytable = flattable.unflatten(*self.tablekeys(*args, **kwargs))
                 for axis in arraytable.headerkeys: arraytable = arraytable.sort(axis, ascending=True)
                 return function(arraytable, *wargs, **wkwargs)            
