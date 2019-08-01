@@ -167,6 +167,7 @@ class ArrayTable(TableBase):
     
     def __init__(self, *args, data, variables, **kwargs):
         assert isinstance(data, (xr.Dataset))
+        assert all([key not in (*data.data_vars.keys(), *data.dims)  for key in data.attrs.keys()])      
         super().__init__(*args, data=data, **kwargs)
         self.__variables = variables.__class__([(key, variables[key]) for key in (*self.datakeys, *self.headerkeys, *self.scopekeys)])
                 
@@ -190,7 +191,7 @@ class ArrayTable(TableBase):
     @property
     def datakeys(self): return tuple(self.dataset.data_vars.keys())
     @property
-    def headerkeys(self): return self.dataset.dims
+    def headerkeys(self): return tuple(self.dataset.dims)
     @property
     def scopekeys(self): return tuple(self.dataset.attrs.keys())
     
