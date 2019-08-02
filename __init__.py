@@ -167,10 +167,10 @@ class ArrayTable(TableBase):
     
     def __init__(self, *args, data, variables, **kwargs):
         assert isinstance(data, (xr.Dataset))
-        assert all([key not in (*data.data_vars.keys(), *data.dims)  for key in data.attrs.keys()])      
-        super().__init__(*args, data=data, **kwargs)
+        assert all([key not in (*data.data_vars.keys(), *data.dims) for key in data.attrs.keys()])      
+        super().__init__(*args, data=data, **kwargs)        
         self.__variables = variables.__class__([(key, variables[key]) for key in (*self.datakeys, *self.headerkeys, *self.scopekeys)])
-                
+
     @property
     def variables(self): return self.__variables        
     @property
@@ -194,6 +194,14 @@ class ArrayTable(TableBase):
     def headerkeys(self): return tuple(self.dataset.dims)
     @property
     def scopekeys(self): return tuple(self.dataset.attrs.keys())
+    
+    def headervalues(self, axis, tovarray=False): 
+        strings = self.dataset.coords[axis].values
+        return strings if not tovarray else [self.variables[axis].fromstr(value) for value in strings]
+    
+    def scopevalues(self, key, tovarray=False): 
+        strings = self.dataset.attrs[key]
+        return strings if not tovarray else [self.variables[key].fromstr(value) for value in strings]
     
     @property
     def headers(self): return {key:value.values for key, value in self.dataset.coords.items()}
@@ -252,6 +260,15 @@ class ArrayTable(TableBase):
         dataframe = dataframe_fromxarray(self.dataset) 
         for datakey in self.datakeys: dataframe[datakey] = dataframe[datakey].apply(lambda x: str(self.variables[datakey](x)))
         return FlatTable(data=dataframe, variables=self.variables, name=self.name)     
+
+#    def __mul__(self, other): return self.multiply(self, other)
+#    def __truediv__(self, other): return self.divide(self, other)
+    
+#    def multiply(self, other, *args, **kwargs):
+#        pass
+    
+#    def divide(self, other, *args, **kwargs):
+#        pass
     
 #    def toframe(self, index=[]):
 #        index = _aslist(index)

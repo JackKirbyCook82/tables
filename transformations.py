@@ -40,7 +40,7 @@ class Transformation(ABC):
 
     def __call__(self, table, *args, **kwargs):
         TableClass = table.__class__
-        dataarrays, variables, scope, name = table.dataarrays.copy(), table.variables.copy(), table.scope.copy(), table.name
+        dataarrays, variables, scope, name = table.dataarrays.copy(), table.variables.copy(), table.scope, table.name
         
         newdataarrays, newvariables = self.execute(dataarrays, variables, *args, **self.hyperparms, **kwargs)
         if not self.extract: dataarrays.update(newdataarrays)          
