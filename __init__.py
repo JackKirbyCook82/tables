@@ -10,6 +10,7 @@ from abc import ABC, abstractmethod
 import pandas as pd
 import numpy as np
 import xarray as xr
+from numbers import Number
 
 from utilities.dataframes import dataframe_fromxarray
 from utilities.xarrays import xarray_fromdataframe
@@ -195,14 +196,6 @@ class ArrayTable(TableBase):
     @property
     def scopekeys(self): return tuple(self.dataset.attrs.keys())
     
-    def headervalues(self, axis, tovarray=False): 
-        strings = self.dataset.coords[axis].values
-        return strings if not tovarray else [self.variables[axis].fromstr(value) for value in strings]
-    
-    def scopevalues(self, key, tovarray=False): 
-        strings = self.dataset.attrs[key]
-        return strings if not tovarray else [self.variables[key].fromstr(value) for value in strings]
-    
     @property
     def headers(self): return {key:value.values for key, value in self.dataset.coords.items()}
     @property
@@ -261,14 +254,22 @@ class ArrayTable(TableBase):
         for datakey in self.datakeys: dataframe[datakey] = dataframe[datakey].apply(lambda x: str(self.variables[datakey](x)))
         return FlatTable(data=dataframe, variables=self.variables, name=self.name)     
 
-#    def __mul__(self, other): return self.multiply(self, other)
-#    def __truediv__(self, other): return self.divide(self, other)
+    def __mul__(self, factor): return self.multiply(self, factor)
+    def __truediv__(self, factor): return self.divide(self, factor)
     
-#    def multiply(self, other, *args, **kwargs):
-#        pass
+    def multiply(self, factor, *args, **kwargs):
+        assert isinstance(factor, Number)
+        newdataset = self.dataset * factor
+        newvariable = self.variable[self.datakey].factor(*args, how='multiply', factor=factor, **kwargs)
+        newvariables = {key:(value if key != self.datakey else newvariable) for key, value in self.variables.items()}
+        return self.__class__(data=newdataset, variables=newvariables, name=self.name)    
     
-#    def divide(self, other, *args, **kwargs):
-#        pass
+    def divide(self, factor, *args, **kwargs):
+        assert isinstance(factor, Number)
+        newdataset = self.dataset / factor
+        newvariable = self.variable[self.datakey].factor(*args, how='divide', factor=factor, **kwargs)
+        newvariables = {key:(value if key != self.datakey else newvariable) for key, value in self.variables.items()}
+        return self.__class__(data=newdataset, variables=newvariables, name=self.name)        
     
 #    def toframe(self, index=[]):
 #        index = _aslist(index)
