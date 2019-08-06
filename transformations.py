@@ -10,8 +10,9 @@ from abc import ABC, abstractmethod
 import pandas as pd
 import xarray as xr
 from collections import OrderedDict as ODict
-from utilities.dispatchers import clskey_singledispatcher as keydispatcher
+from functools import update_wrapper
 
+from utilities.dispatchers import clskey_singledispatcher as keydispatcher
 import utilities.xarrays as xar
 import utilities.narrays as nar
 import variables.varrays as var
@@ -31,6 +32,17 @@ def setheader(xarray, axis, header):
     return xarray 
 
 
+def getscope(function):
+    def wrapper(dataarrays, variables, *args, **kwargs):
+        newdataarrays, newvariables = function(dataarrays, variables, *args, **kwargs)
+        newattrslist = [newdataarray.attrs for newdataarray in newdataarrays.values()]
+        newscope = newattrslist.pop(0)
+        assert all([newattrs == newscope for newattrs in newattrslist])
+        return newdataarrays, newvariables, newscope
+    update_wrapper(wrapper, function)
+    return wrapper
+
+
 class Transformation(ABC):
     def __init__(self, *args, **hyperparms): 
         self.hyperparms = {key:value for key, value in self.defaults.items()}
@@ -40,32 +52,36 @@ class Transformation(ABC):
 
     def __call__(self, table, *args, **kwargs):
         TableClass = table.__class__
-        dataarrays, variables, scope, name = table.dataarrays, table.variables.copy(), table.scope, table.name
+        dataarrays, variables, name = table.dataarrays, table.variables.copy(), table.name
         
-        newdataarrays, newvariables = self.execute(dataarrays, variables, *args, **self.hyperparms, **kwargs)
+        newdataarrays, newvariables, newscope = self.execute(dataarrays, variables, *args, **self.hyperparms, **kwargs)
         if not self.extract: dataarrays.update(newdataarrays)          
         else: dataarrays = newdataarrays
+
         variables.update(newvariables)  
         dataset = xr.merge([dataarray.to_dataset() for key, dataarray in dataarrays.items()])   
-        dataset.attrs = scope   
+        dataset.attrs = newscope   
         return TableClass(data=dataset, variables=variables, name=name)
 
     @keydispatcher('transformtype')
     def transform(self, transformtype, dataarrays, variables, *args, **kwargs): pass
 
     @transform.register('over_data')
+    @getscope
     def __overdata(self, dataarrays, variables, *args, datakey, **kwargs):
         newdataarrays = {datakey:self.datatransform(*args, axis=datakey, dataarray=dataarrays[datakey], variable=variables[datakey], **kwargs)}
         newvariables = {datakey:self.datavariable(*args, variable=variables[datakey], **kwargs)}
         return newdataarrays, newvariables
             
     @transform.register('along_axis')
+    @getscope
     def __alongaxis(self, dataarrays, variables, *args, datakey, axis, **kwargs):
         newdataarrays = {datakey:self.datatransform(*args, axis=axis, dataarray=dataarrays[datakey], variable=variables[axis], **kwargs)}
         newvariables = {datakey:self.datavariable(*args, variable=variables[datakey], **kwargs)}
         return newdataarrays, newvariables
     
     @transform.register('with_axis')
+    @getscope
     def __withaxis(self, dataarrays, variables, *args, axis, **kwargs):
         newdataarrays = {datakey:self.datatransform(*args, axis=axis, dataarray=dataarrays[datakey], variable=variables[axis], **kwargs) for datakey, dataarray in dataarrays.items()}
         newvariables = {datakey:self.datavariable(*args, variable=variables[datakey], **kwargs) for datakey, dataarray in dataarrays.items()}
@@ -73,12 +89,14 @@ class Transformation(ABC):
         return newdataarrays, newvariables
     
     @transform.register('over_axis')
+    @getscope
     def __overaxis(self, dataarrays, variables, *args, axis, **kwargs):
         newdataarrays = {datakey:self.datatransform(*args, axis=axis, dataarray=dataarray, variable=variables[axis], **kwargs) for datakey, dataarray in dataarrays.items()}   
         newvariables = {axis:self.axisvariable(*args, variable=variables[axis], **kwargs)}
         return newdataarrays, newvariables
       
     @transform.register('against_axis')
+    @getscope
     def __againstaxis(self, dataarrays, variables, *args, datakey, axis, **kwargs):
         newdataarrays = {datakey:self.datatransform(*args, datakey=datakey, axis=axis, dataarray=dataarrays[datakey], datavariable=variables[datakey], axisvariable=variables[axis], **kwargs)}
         newvariables = {datakey:self.datavariable(*args, variable=variables[datakey], **kwargs)}
@@ -132,7 +150,7 @@ class Reduction:
         varray = getheader(dataarray, axis, variable)
         xarray = self.xarray_funcs[how](dataarray, *args, axis=axis, **kwargs)
         varray = self.varray_funcs['summation'](varray, *args, **kwargs)
-        #xarray.attrs.update({axis:varray})
+        xarray.attrs.update({axis:str(varray)}) 
         return xarray
         
     def datavariable(self, *args, variable, how, **kwargs):        

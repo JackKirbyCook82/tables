@@ -195,11 +195,15 @@ class ArrayTable(TableBase):
     def headerkeys(self): return tuple(self.dataset.dims)
     @property
     def scopekeys(self): return tuple(self.dataset.attrs.keys())
+    @property
+    def axeskeys(self): return (*self.headerkeys, self.scopekeys)
     
     @property
     def headers(self): return {key:value.values for key, value in self.dataset.coords.items()}
     @property
     def scope(self): return {key:value for key, value in self.dataset.attrs.items()}
+    @property
+    def axes(self): return {key:(self.headers[key] if key in self.headerkeys else self.scope[key]) for key in self.axeskeys}
     
     def items(self): return [*self.datakey, *self.headerkeys, *self.scopekeys]
     def todict(self): return dict(data=self.dataset, name=self.name, variables=self.variables)
@@ -236,7 +240,7 @@ class ArrayTable(TableBase):
             newdataset = self.dataset[sliceitems]          
             newdataset = newdataset.loc[keyitems]
             newdataset.attrs = self.dataset.attrs 
-            for key, value in keyitems.items(): newdataset = newdataset.drop(key)  
+            for key, value in keyitems.items(): newdataset = newdataset.drop(key)
             newdataset.attrs.update(keyitems)                   
         else: raise TypeError(type(items))
         return self.__class__(data=newdataset, variables=self.variables, name=self.name)
@@ -249,10 +253,25 @@ class ArrayTable(TableBase):
         newdataset.attrs = self.dataset.attrs
         return self.__class__(data=newdataset, variables=self.variables, name=self.name)
 
-    def flatten(self): 
-        dataframe = dataframe_fromxarray(self.dataset) 
-        for datakey in self.datakeys: dataframe[datakey] = dataframe[datakey].apply(lambda x: str(self.variables[datakey](x)))
-        return FlatTable(data=dataframe, variables=self.variables, name=self.name)     
+    def expand(self, onscope):
+        newdataset = self.dataset.assign_coords(**{onscope:self.dataset.attrs[onscope]}).expand_dims(onscope)        
+        newdataset.attrs.pop(onscope)
+        return self.__class__(data=newdataset, variables=self.variables, name=self.name)
+    
+    def squeeze(self, onaxis):
+        assert len(self.headers[onaxis]) == 1
+        newdataset = self.dataset.squeeze(dim=onaxis)
+        newdataset.attrs = self.dataset.attrs
+        newdataset.attrs.update({onaxis:self.headers[onaxis][0]})
+        return self.__class__(data=newdataset, variables=self.variables, name=self.name)
+
+    def confine(self, key, value, variable):
+        assert key not in self.axeskeys
+        assert key not in self.variables.keys()
+        newdataset, newvariables = self.dataset, self.variables.copy()
+        newdataset.attrs.update({key:value})
+        newvariables.update({key:variable})
+        return self.__class__(data=newdataset, variables=newvariables, name=self.name)
 
     def __mul__(self, factor): return self.multiply(self, factor)
     def __truediv__(self, factor): return self.divide(self, factor)
@@ -270,16 +289,12 @@ class ArrayTable(TableBase):
         newvariable = self.variable[self.datakey].factor(*args, how='divide', factor=factor, **kwargs)
         newvariables = {key:(value if key != self.datakey else newvariable) for key, value in self.variables.items()}
         return self.__class__(data=newdataset, variables=newvariables, name=self.name)        
-    
-#    def toframe(self, index=[]):
-#        index = _aslist(index)
-#        columns = [item for item in self.headerkeys if item not in index]       
-#        dataframe = self.xarray.to_dataframe()[self.datakey].to_frame().reset_index()  
-#        dataframe = pd.pivot_table(dataframe, columns=columns ,index=index, values=self.datakey)       
-#        setattr(dataframe, 'scope', self.xarray.attrs)
-#        dataframe.name = self.datakey
-#        return dataframe
- 
+
+    def flatten(self): 
+        dataframe = dataframe_fromxarray(self.dataset) 
+        for datakey in self.datakeys: dataframe[datakey] = dataframe[datakey].apply(lambda x: str(self.variables[datakey](x)))
+        return FlatTable(data=dataframe, variables=self.variables, name=self.name)     
+
 
 class GeoTable(TableBase):
     dataformat = 'DATA:\n{values}'
