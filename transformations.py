@@ -280,8 +280,8 @@ class Group(object):
         TableClass = table.__class__
         dataframe, variables, name = table.dataframe, table.variables.copy(), table.name
         
-        newdataframe, newvariables = self.execute(dataframe, variables, *args, **self.hyperparms, **kwargs)        
-        variables.update(newvariables)           
+        newdataframe, newvariables = self.execute(dataframe, variables, *args, column=column, **self.hyperparms, **kwargs)        
+        variables.update({column:newvariables})           
         return TableClass(data=newdataframe, variables=variables, name=name)
         
     def execute(self, dataframe, variables, *args, **kwargs): return self.transform(dataframe, variables, *args, **kwargs)    
@@ -291,7 +291,7 @@ class Group(object):
         return newdataframe, newvariables
                 
     def datatransform(self, *args, dataframe, column, variable, groups, right, **kwargs):
-        dataframe[column] = dataframe[column].apply(lambda x: str(variable.fromstr(x).group(*args, groups=groups[column], right=right, **kwargs)))
+        dataframe[column] = dataframe[column].apply(lambda x: str(variable.fromstr(x).group(*args, groups=groups, right=right, **kwargs)))
         return dataframe
         
     def datavariable(self, *args, variable, **kwargs):

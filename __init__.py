@@ -41,6 +41,7 @@ def get_option(key): return _OPTIONS[key]
 def show_options(): print('Table Options: ' + ', '.join([' = '.join([key, str(value)]) for key, value in _OPTIONS.items()]))
 
 
+_ALL = '*'
 _buffer = lambda : _OPTIONS['bufferchar'] * _OPTIONS['linewidth']
 _aslist = lambda items: [items] if not isinstance(items, (list, tuple)) else list(items)
 
@@ -168,12 +169,9 @@ class ArrayTable(TableBase):
     
     def __init__(self, *args, data, variables, **kwargs):
         assert isinstance(data, (xr.Dataset))
-        assert all([key not in (*data.data_vars.keys(), *data.dims) for key in data.attrs.keys()])      
-        super().__init__(*args, data=data, **kwargs)        
+        super().__init__(*args, data=data, **kwargs)  
         self.__variables = variables.__class__([(key, variables[key]) for key in (*self.datakeys, *self.headerkeys, *self.scopekeys)])
-
-    @property
-    def variables(self): return self.__variables        
+    
     @property
     def dataset(self): return self.data  
     @property
@@ -181,6 +179,17 @@ class ArrayTable(TableBase):
         items = {key:self.dataset[key] for key in self.datakeys}
         for item in items.values(): item.attrs = self.dataset.attrs
         return items
+    
+    @property
+    def variables(self): return self.__variables 
+    @property
+    def datavariables(self): return {key:self.variables[key] for key in self.datakeys}        
+    @property
+    def axesvariables(self): return {key:self.variables[key] for key in self.axeskeys}
+    @property
+    def headervariables(self): return {key:self.variables[key] for key in self.headerkeys}
+    @property
+    def scopevariables(self): return {key:self.variables[key] for key in self.scopekeys}    
     
     @property
     def layers(self): return len(self.dataset.data_vars)
@@ -196,7 +205,7 @@ class ArrayTable(TableBase):
     @property
     def scopekeys(self): return tuple(self.dataset.attrs.keys())
     @property
-    def axeskeys(self): return (*self.headerkeys, self.scopekeys)
+    def axeskeys(self): return (*self.headerkeys, *self.scopekeys)
     
     @property
     def headers(self): return {key:value.values for key, value in self.dataset.coords.items()}
@@ -204,8 +213,8 @@ class ArrayTable(TableBase):
     def scope(self): return {key:value for key, value in self.dataset.attrs.items()}
     @property
     def axes(self): return {key:(self.headers[key] if key in self.headerkeys else self.scope[key]) for key in self.axeskeys}
-    
-    def items(self): return [*self.datakey, *self.headerkeys, *self.scopekeys]
+       
+    def items(self): return [*self.datakeys, *self.headerkeys, *self.scopekeys]
     def todict(self): return dict(data=self.dataset, name=self.name, variables=self.variables)
     
     @property
@@ -224,6 +233,8 @@ class ArrayTable(TableBase):
             assert all([item in self.datakeys for item in items])
             newdataset = self.dataset[items]
             newdataset.attrs = self.dataset.attrs
+        elif isinstance(items, int):
+            return self[self.datakeys[items]]
         elif isinstance(items, str):
             assert items in self.datakeys
             newdataset = self.dataset[items].to_dataset(name=items)
@@ -243,6 +254,17 @@ class ArrayTable(TableBase):
             for key, value in keyitems.items(): newdataset = newdataset.drop(key)
             newdataset.attrs.update(keyitems)                   
         else: raise TypeError(type(items))
+        return self.__class__(data=newdataset, variables=self.variables, name=self.name)
+
+    def update(self, **kwargs):
+        for axis, values in kwargs.items():
+            if axis in self.headerkeys:
+                newdataset = self.dataset.assign_coords(**{axis:[str(value) for value in values]})
+                newdataset.attrs = self.dataset.attrs
+            elif axis in self.scopekeys:
+                newdataset = self.dataset
+                newdataset.attrs[axis] = str(values)
+            else: raise ValueError(axis)        
         return self.__class__(data=newdataset, variables=self.variables, name=self.name)
 
     def sort(self, axis, ascending=True):
@@ -265,30 +287,25 @@ class ArrayTable(TableBase):
         newdataset.attrs.update({onaxis:self.headers[onaxis][0]})
         return self.__class__(data=newdataset, variables=self.variables, name=self.name)
 
-    def confine(self, key, value, variable):
-        assert key not in self.axeskeys
-        assert key not in self.variables.keys()
-        newdataset, newvariables = self.dataset, self.variables.copy()
-        newdataset.attrs.update({key:value})
-        newvariables.update({key:variable})
-        return self.__class__(data=newdataset, variables=newvariables, name=self.name)
-
-    def __mul__(self, factor): return self.multiply(self, factor)
-    def __truediv__(self, factor): return self.divide(self, factor)
-    
-    def multiply(self, factor, *args, **kwargs):
+    def multiply(self, factor, *args, datakeys, **kwargs):
         assert isinstance(factor, Number)
-        newdataset = self.dataset * factor
-        newvariable = self.variable[self.datakey].factor(*args, how='multiply', factor=factor, **kwargs)
-        newvariables = {key:(value if key != self.datakey else newvariable) for key, value in self.variables.items()}
+        if factor == 1: return self
+        newdataarrays = [self.dataarrays[datakey] * factor if datakey in _aslist(datakeys) else self.dataarrays[datakey] for datakey in self.datakeys]
+        newdataset = xr.merge(newdataarrays)  
+        newdataset.attrs = self.dataset.attrs
+        newvariables = self.variables.copy()
+        newvariables.update({datakey:self.variables[datakey].factor(*args, how='multiply', factor=factor, **kwargs) for datakey in _aslist(datakeys)})
         return self.__class__(data=newdataset, variables=newvariables, name=self.name)    
     
-    def divide(self, factor, *args, **kwargs):
+    def divide(self, factor, *args, datakeys, **kwargs):
         assert isinstance(factor, Number)
-        newdataset = self.dataset / factor
-        newvariable = self.variable[self.datakey].factor(*args, how='divide', factor=factor, **kwargs)
-        newvariables = {key:(value if key != self.datakey else newvariable) for key, value in self.variables.items()}
-        return self.__class__(data=newdataset, variables=newvariables, name=self.name)        
+        if factor == 1: return self
+        newdataarrays = [self.dataarrays[datakey] / factor if datakey in _aslist(datakeys) else self.dataarrays[datakey] for datakey in self.datakeys]
+        newdataset = xr.merge(newdataarrays) 
+        newdataset.attrs = self.dataset.attrs
+        newvariables = self.variables.copy()
+        newvariables.update({datakey:self.variables[datakey].factor(*args, how='divide', factor=factor, **kwargs) for datakey in _aslist(datakeys)})
+        return self.__class__(data=newdataset, variables=newvariables, name=self.name)      
 
     def flatten(self): 
         dataframe = dataframe_fromxarray(self.dataset) 

@@ -8,7 +8,6 @@ Created on Sun Jun 2 2019
 
 from functools import update_wrapper
 import xarray as xr
-import pandas as pd
 
 import utilities.xarrays as xar
 
@@ -22,160 +21,89 @@ __license__ = ""
 _aslist = lambda items: [items] if not isinstance(items, (list, tuple)) else list(items)     
 
 
-#def operation_loop(function):
-#    def wrapper(table, others, *args, **kwargs):
-#        newtable = table
-#        for other in _aslist(others): newtable = function(newtable, other, *args, **kwargs)
-#        return newtable
-#    update_wrapper(wrapper, function)
-#    return wrapper
-
-
-def operation():
-    def decorator(function):
-        def wrapper(table, other, *args, **kwargs):
+def operation(name_function = lambda name, other: name, datakey_function = lambda datakey, other: datakey):
+    def decorator(dataarray_function):
+        def wrapper(table, other, *args, axis=None, **kwargs):
             assert isinstance(other, type(table))    
             TableClass = table.__class__
             assert table.layers == other.layers == 1
-            assert table.dims == other.dims
+            assert table.dim == other.dim
             assert table.shape == other.shape  
-            newdataset, newvariables, newname = function(table, other, *args, **kwargs)
-            return TableClass(data=newdataset, variables=newvariables, name=newname)           
-        update_wrapper(wrapper, function)
-        return wrapper
-    return decorator
+   
+            method = dataarray_function.__name__
+            if axis is None: axistype = 'data'
+            elif axis in table.headerkeys: axistype = 'header'
+            elif axis in table.scopekeys: axistype = 'scope'
+            else: raise ValueError(axis)    
     
-        
-def data_operation(namefunction, datakeyfunction):
-    def decorator(function):
-        @operation()
-        def wrapper(table, other, *args, **kwargs):
+            name, othername = table.name, other.name
+            datakey, otherdatakey = table.datakeys[0], other.datakeys[0]   
+            if not axis: axis, otheraxis = datakey, otherdatakey  
+            else: axis, otheraxis = axis, axis
+            dataarray, otherdataarray = table.dataarrays[datakey], other.dataarrays[otherdatakey]  
+            scope, otherscope = table.scope, other.scope
+            variables, othervariables = table.variables, other.variables
+
+            if axistype != 'data': assert table.datakeys == other.datakeys
+            assert table.headerkeys == other.headerkeys
+            for key in set([*table.headerkeys, *other.headerkeys]):
+                if all([key != axis, key != otheraxis]): 
+                    assert all([hdritem == otheritem for hdritem, otheritem in zip(table.headers[key], other.headers[key])])
+            for key in set([*table.scopekeys, *other.scopekeys]):        
+                if all([key != axis, key != otheraxis, key in table.scopekeys, key in other.scopekeys]):
+                    assert table.scope[key] == other.scope[key]
             
-            newname = kwargs.get('name', namefunction(table.name, other.name))
-            newdatakey = datakeyfunction(table.name, other.name)
-            
-            return newdataset, newvariables, newname
-        return wrapper
-        update_wrapper(wrapper, function)
-    return decorator            
+            axes_function = lambda item, otheritem: getattr(variables[axis].fromstr(item), method)(othervariables[otheraxis].fromstr(otheritem), *args, **kwargs)           
+ 
+            newname = kwargs.get('name', name_function(name, othername))
+            newdatakey = datakey_function(datakey, otherdatakey)
+            newdataarray = dataarray_function(dataarray, otherdataarray, *args, **kwargs)
+            newvariable = variables[axis].operation(othervariables[otheraxis], *args, method=method, **kwargs) 
+            if axistype == 'data': newaxes = None
+            elif axistype == 'header': newaxes = [axes_function(item, otheritem) for item, otheritem in zip(table.headers[axis], other.headers[otheraxis])]  
+            elif axistype == 'scope': newaxes = axes_function(table.scope[axis], other.scole[otheraxis])                   
+            else: return ValueError(axistype)
+
+            newvariables = {key:value for key, value in variables.items()}
+            newvariables.update({newdatakey:newvariable})
+            newattrs = {key:scope[key] for key in set([*scope.keys(), *otherscope.keys()]) if scope.get(key, None) == otherscope.get(key, None)}
+            newdataset = newdataarray.to_dataset(name=newdatakey) 
+            newdataset.attrs = newattrs
+            if axistype == 'data': pass
+            elif axistype == 'header': newdataset = newdataset.assign.coords(**{axis:newaxes})
+            elif axistype == 'scope': newdataset.attrs[axis] == newaxes                  
+            else: return ValueError(axistype)
+            return TableClass(data=newdataset, variables=newvariables, name=newname)        
+        update_wrapper(wrapper, dataarray_function)
+        return wrapper   
+    return decorator     
 
 
-def scope_operation():
-    def decorator(function):
-        @operation
-        def wrapper(table, other, *args, **kwargs):
-            
-            newname = kwargs.get('name', table.name)
-            newdatakey = table.datakey
-            
-            return newdataset, newvariables, newname
-        return wrapper
-        update_wrapper(wrapper, function)
-    return decorator
+def operationloop(function):
+    def wrapper(table, others, *args, **kwargs):
+        newtable = table
+        for other in _aslist(others): newtable = function(newtable, other, *args, **kwargs)
+        return newtable
+    update_wrapper(wrapper, function)
+    return wrapper
 
 
-#def operation(core):
-#    def decorator(function):
-#        def wrapper(table, other, *args, **kwargs):
-#            TableClass = table.__class__
-#            assert isinstance(other, type(table))    
-#            assert table.layers == other.layers == 1
-#            assert table.dims == other.dims
-#            assert table.shape == other.shape          
-#            
-#            table, other, corekey = aligntables(table, other, *args, core, **kwargs)
-#            
-#            assert table.axeskeys == other.axeskeys
-#            for axeskey in table.axeskeys:
-#                if axeskey != corekey: assert table.axes[corekey] == other.axes[corekey]   
-#                assert table.variables[axeskey] == other.variables[axeskey]
-#                           
-#            return TableClass(data=newdataset, variables=newvariables, name=newname)
-#            
-#        update_wrapper(wrapper, function)
-#        return wrapper
-#    return decorator
+@operation()
+def add(dataarray, other, *args, **kwargs): return dataarray + other  
+
+@operation()
+def subtract(dataarray, other, *args, **kwargs): return dataarray - other  
+
+@operation(name_function = lambda name, other: '*'.join([name, other]), 
+           datakey_function = lambda datakey, other: '*'.join([datakey, other]))
+def multiply(dataarray, other, *args, **kwargs): return dataarray * other
+
+@operation(name_function = lambda name, other: '/'.join([name, other]), 
+           datakey_function = lambda datakey, other: '/'.join([datakey, other]))
+def divide(dataarray, other, *args, **kwargs): return dataarray / other
 
 
-@operation(core='onscope')
-def add(table, other, *args, onscope, **kwargs):
-    assert table.datakeys == other.datakeys 
-
-    dataarrays, otherdataarrays = table.dataarrays, other.dataarrays
-    scope, otherscope = table.scope, other.scope
-    variables, othervariables = table.varaiables, other.variables
-    
-    datakey, otherdatakey = table.datakeys[0], other.datakeys[0]
-    
-    newname = kwargs.get('name', table.name)
-    newdataarray = dataarrays[datakey] + otherdataarrays[otherdatakey]
-    newattr = str(variables[onscope].fromstr(scope[onscope]).add(othervariables[onscope].fromstr(otherscope[onscope]), *args, **kwargs))
-    newattrs = {key:value if key != onscope else newattr for key, value in scope.items()}
-    newdataset = newdataarray.to_dataset(name=datakey) 
-    newdataset.attrs = newattrs
-    return    
-    
-
-@operation(core='onscope')
-def subtract(table, other, *args, onscope, **kwargs):
-    assert table.datakeys == other.datakeys 
-
-    dataarrays, otherdataarrays = table.dataarrays, other.dataarrays
-    scope, otherscope = table.scope, other.scope
-    variables, othervariables = table.varaiables, other.variables
-    
-    datakey, otherdatakey = table.datakeys[0], other.datakeys[0]
-    
-    newname = kwargs.get('name', table.name)
-    newdataarray = dataarrays[datakey] - otherdataarrays[otherdatakey]
-    newattr = str(variables[onscope].fromstr(scope[onscope]).subtract(othervariables[onscope].fromstr(otherscope[onscope]), *args, **kwargs))
-    newattrs = {key:value if key != onscope else newattr for key, value in scope.items()}
-    newdataset = newdataarray.to_dataset(name=datakey) 
-    newdataset.attrs = newattrs
-    return 
-
-
-@operation(core='ondata')
-def multiply(table, other, *args, **kwargs):
-    dataarrays, otherdataarrays = table.dataarrays, other.dataarrays
-    scope, otherscope = table.scope, other.scope
-    variables, othervariables = table.varaiables, other.variables
-    
-    datakey, otherdatakey = table.datakeys[0], other.datakeys[0]
-    
-    newname = kwargs.get('name', '*'.join([table.name, other.name]))
-    newdatakey = '*'.join([datakey, other])
-    newdataarray = dataarrays[datakey] * otherdataarrays[otherdatakey]
-    newattrs = scope
-    newdataset = newdataarray.to_dataset(name=newdatakey) 
-    newdataset.attrs = newattrs
-    newvariable = variables[datakey].operation(othervariables[datakey], *args, method='multiply', **kwargs)
-    newvariables = variables.copy()
-    newvariables.update({newdatakey:newvariable})
-    return     
-    
-
-@operation(core='ondata')
-def divide(table, other, *args, **kwargs):
-    dataarrays, otherdataarrays = table.dataarrays, other.dataarrays
-    scope, otherscope = table.scope, other.scope
-    variables, othervariables = table.varaiables, other.variables
-    
-    datakey, otherdatakey = table.datakeys[0], other.datakeys[0]
-    
-    newname = kwargs.get('name', '*'.join([table.name, other.name]))
-    newdatakey = '/'.join([datakey, other])    
-    newdataarray = dataarrays[datakey] * otherdataarrays[otherdatakey]
-    newattrs = scope
-    newdataset = newdataarray.to_dataset(name=newdatakey) 
-    newdataset.attrs = newattrs
-    newvariable = variables[datakey].operation(othervariables[datakey], *args, method='divide', **kwargs)
-    newvariables = variables.copy()
-    newvariables.update({newdatakey:newvariable})
-    return  
-
-
-def concat(table, other, *args, onaxis, **kwargs):
+def concat(table, other, *args, axis, **kwargs):
     TableClass = table.__class__
     assert isinstance(other, type(table))    
     assert table.layers == other.layers == 1
@@ -185,48 +113,56 @@ def concat(table, other, *args, onaxis, **kwargs):
 
     datakey, otherdatakey = table.datakeys[0], other.datakeys[0]
     assert datakey == otherdatakey
-    newdataarray = xar.xarray_concat(table.dataarrays[datakey], other.dataarrays[otherdatakey], *args, onaxis=onaxis, **kwargs)
+    newdataarray = xar.xarray_concat(table.dataarrays[datakey], other.dataarrays[otherdatakey], *args, onaxis=axis, **kwargs)
     newdataset = newdataarray.to_dataset(name=datakey) 
     newdataset.attrs = newdataarray.attrs      
     return TableClass(data=newdataset, variables=table.variables, name=table.name)
 
 
-def merge(table, other, *args, onscope, **kwargs):
-    table, other = table.expand(onscope), other.expand(onscope)
-    return concat(table, other, *args, onaxis=onscope, **kwargs)
+def merge(table, other, *args, axis, **kwargs):
+    table, other = table.expand(axis), other.expand(axis)
+    return concat(table, other, *args, onaxis=axis, **kwargs)
 
 
-def append(table, other, *args, toaxis, **kwargs):
-    other = other.expand(toaxis)
-    return concat(table, other, *args, onaxis=toaxis, **kwargs)
+def append(table, other, *args, axis, **kwargs):
+    other = other.expand(axis)
+    return concat(table, other, *args, onaxis=axis, **kwargs)
 
 
-#@operation_loop
-#def layer(table, other, *args, name, **kwargs):
-#    TableClass = table.__class__
-#    assert table.dim == other.dim
-#    assert table.shape == other.shape
-#    print(table, other)
-#    datakeys, headerkeys, scopekeys = table.datakeys, table.headerkeys, table.scopekeys
-#    otherdatakeys, otherheaderkeys, otherscopekeys = other.datakeys, other.headerkeys, other.scopekeys
-#        
-#    assert all([datakey not in otherdatakeys for datakey in datakeys]) 
-#    assert headerkeys == otherheaderkeys
-#   
-#    dataset, variables, scope = table.dataset, table.variables, table.scope
-#    otherdataset, othervariables, otherscope = other.dataset, other.variables, other.scope      
-#
-#    #newscope = {key:scope[key] if key in scope.keys() else otherscope[key] for key in list(set([*scopekeys, *otherscopekeys]))}    
-#    #newscope = {key:value for key, value in newscope.items() if key not in (*datakeys, *otherdatakeys, *headerkeys)}
-#    
-#    #newvariables = _getvariables(variables, othervariables, (*datakeys, *otherdatakeys))
-#    #newvariables.update(_getvariables(variables, othervariables, headerkeys))
-#    #newvariables.update(_getvariables(variables, othervariables, newscope.keys()))
-#
-#    newdataset = xr.merge([dataset, otherdataset])  
-#    newdataset.attrs = newscope
-#    
-#    return TableClass(data=newdataset, variables=newvariables, name=name)  
+@operationloop
+def layer(table, other, *args, name, **kwargs):
+    assert isinstance(other, type(table))    
+    TableClass = table.__class__
+    assert other.layers == 1
+    assert table.dim == other.dim
+    assert table.shape == other.shape
+
+    datakeys, otherdatakey = table.datakeys, other.datakeys[0]
+    dataset, otherdataset = table.dataset, other.dataset,
+    scope, otherscope = table.scope, other.scope   
+    variables, othervariables = table.variables, other.variables    
+
+    assert otherdatakey not in datakeys
+    assert table.headerkeys == other.headerkeys
+    for key in set([*table.headerkeys, *other.headerkeys]):
+        assert all([hdritem == otheritem for hdritem, otheritem in zip(table.headers[key], other.headers[key])])
+    for key in set([*table.scopekeys, *other.scopekeys]):        
+        if all([key in table.scopekeys, key in other.scopekeys]):
+            assert table.scope[key] == other.scope[key]
+    for key in set([*table.headerkeys, *other.headerkeys]):
+        assert variables[key] == othervariables[key]
+    for key in set([*table.scopekeys, *other.scopekeys]):
+        if all([key in table.scopekeys, key in other.scopekeys]):
+            assert variables[key] == othervariables[key]
+            
+    variable_function = lambda key: variables[key] if key in variables.keys() else othervariables[key]
+        
+    newdataset = xr.merge([dataset, otherdataset])  
+    newattrs = {key:scope[key] for key in set([*scope.keys(), *otherscope.keys()]) if scope.get(key, None) == otherscope.get(key, None)}    
+    newdataset.attrs = newattrs
+    newvariables = {key:variable_function(key) for key in (*datakeys, otherdatakey, *set([*table.headerkeys, *other.headerkeys]))}
+    newvariables.update({key:variable_function(key) for key in newattrs.keys()})
+    return TableClass(data=newdataset, variables=newvariables, name=name)  
 
 
 
