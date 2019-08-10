@@ -11,6 +11,7 @@ import pandas as pd
 import numpy as np
 import xarray as xr
 from numbers import Number
+from collections import namedtuple as ntuple
 
 from utilities.dataframes import dataframe_fromxarray
 from utilities.xarrays import xarray_fromdataframe
@@ -19,7 +20,7 @@ from utilities.dispatchers import clskey_singledispatcher as keydispatcher
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
-__all__ = ['ArrayTable', 'FlatTable', 'GeoTable']
+__all__ = ['ArrayTable', 'FlatTable']
 __copyright__ = "Copyright 2018, Jack Kirby Cook"
 __license__ = ""
 
@@ -44,6 +45,7 @@ def show_options(): print('Table Options: ' + ', '.join([' = '.join([key, str(va
 _ALL = '*'
 _buffer = lambda : _OPTIONS['bufferchar'] * _OPTIONS['linewidth']
 _aslist = lambda items: [items] if not isinstance(items, (list, tuple)) else list(items)
+Structure = ntuple('Structure', 'layers dim shape fields')
 
 
 class TableBase(ABC):
@@ -71,6 +73,8 @@ class TableBase(ABC):
     def shape(self): pass  
     @property
     def fields(self): return np.prod(self.shape)
+    @property
+    def structure(self): return Structure(self.layers, self.dim, self.shape, self.fields)
 
     @abstractmethod
     def items(self): pass
@@ -313,34 +317,7 @@ class ArrayTable(TableBase):
         return FlatTable(data=dataframe, variables=self.variables, name=self.name)     
 
 
-class GeoTable(TableBase):
-    dataformat = 'DATA:\n{values}'
 
-    def __init__(self, *args, data, **kwargs):
-        assert all([item in data.columns for item in ('geography', 'geometry')])   
-        geodataframe = data.set_index('geography', drop=True)  
-        super().__init__(*args, data=geodataframe, **kwargs)   
-
-    @property
-    def geodataframe(self): return self.data
-    
-    @property
-    def index(self): return self.geodataframe.index.values
-    
-    @property
-    def layers(self): return 1
-    @property      
-    def dim(self): return self.geodataframe.ndim
-    @property
-    def shape(self): return self.geodataframe.shape  
-
-    @property
-    def strings(self): return '\n\n'.join([self.datastring])
-    @property
-    def datastring(self): return self.dataformat.format(values=str(self.geodataframe))  
-
-    def items(self): return [column for column in self.geodataframe.columns]   
-    def todict(self): return dict(data=self.geodataframe)
 
     
     
