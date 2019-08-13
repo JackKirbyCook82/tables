@@ -17,6 +17,7 @@ from utilities.dataframes import dataframe_fromxarray
 from utilities.xarrays import xarray_fromdataframe
 from utilities.strings import uppercase
 from utilities.dispatchers import clskey_singledispatcher as keydispatcher
+from utilities.dictionarys import SliceOrderedDict as SODict
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
@@ -49,20 +50,30 @@ Structure = ntuple('Structure', 'layers dim shape fields')
 
 
 class TableBase(ABC):
-    def __init__(self, *args, data, name, **kwargs): 
+    variableformat = 'VARIABLE[{index}] = {key}: {name}' 
+    
+    def __init__(self, *args, data, name, variables, **kwargs): 
         self.__data = data
         self.__name = name
+        self.__variables = variables.__class__({key:value for key, value in variables.items() if key in self.items()})
    
     @property
     def data(self): return self.__data   
     @property
+    def variables(self): return self.__variables
+    
+    @property
     def tablename(self): return '{}: {}'.format(self.__class__.__name__.upper(), self.__name)   
     @property
     def name(self): return self.__name
+         
+    def todict(self): return dict(data=self.dataframe, variables=self.variables, name=self.name)
     
+    @property
+    def variablestrings(self): return '\n'.join([self.variableformat.format(index=index, key=uppercase(key, withops=True), name=values.name()) for index, key, values in zip(range(len(self.variables)), self.variables.keys(), self.variables.values())])      
     def __str__(self): return '\n'.join([_buffer(), '\n\n'.join([self.tablename, self.strings, 'Layers={}, Dims={}, Shape={}, Fields={}'.format(self.layers, self.dim, self.shape, self.fields)]), _buffer()])        
-    def __len__(self): return self.dim    
-    
+    def __len__(self): return self.dim  
+
     @abstractmethod
     def strings(self): pass
     @abstractmethod
@@ -78,25 +89,20 @@ class TableBase(ABC):
 
     @abstractmethod
     def items(self): pass
-    @abstractmethod
-    def todict(self): pass
 
- 
+
 class FlatTable(TableBase):
     dataformat = 'DATA:\n{values}' 
-    variableformat = 'VARIABLE[{index}] = {key}: {name}' 
 
     def __init__(self, *args, data, variables, **kwargs):
         try: dataframe = data.to_frame()
         except: dataframe = data
         for column in dataframe.columns: 
             try: dataframe[column] = dataframe[column].apply(lambda x: str(variables[column](x)))
-            except: pass
-        super().__init__(*args, data=dataframe, **kwargs)
-        self.__variables = variables.__class__({key:value for key, value in variables.items() if key in self.items()})
-                   
-    @property
-    def variables(self): return self.__variables        
+            except: pass        
+        super().__init__(*args, data=dataframe, variables=variables, **kwargs)
+
+        
     @property
     def dataframe(self): return self.data
 
@@ -108,14 +114,11 @@ class FlatTable(TableBase):
     def shape(self): return self.dataframe.shape
 
     def items(self): return [column for column in self.dataframe.columns]
-    def todict(self): return dict(data=self.dataframe, variables=self.variables, name=self.name)
 
     @property
     def strings(self): return '\n\n'.join([self.datastring, self.variablestrings])
     @property
     def datastring(self): return self.dataformat.format(values=str(self.dataframe))    
-    @property
-    def variablestrings(self): return '\n'.join([self.variableformat.format(index=index, key=uppercase(key, withops=True), name=values.name()) for index, key, values in zip(range(len(self.variables)), self.variables.keys(), self.variables.values())])  
 
     def __getitem__(self, key): 
         return self.__class__(data=self.dataframe[key], variables=self.variables, name=self.name)
@@ -166,16 +169,15 @@ class FlatTable(TableBase):
 
 
 class ArrayTable(TableBase):
-    dataformat = 'DATA[{index}] = {key}:\n{values}'
+    dataformat = 'DATA[{index}] = {key} {labels}:\n{values}'
     headerformat = 'HEADER[{index}] = {key}:\n{values}'
     scopeformat = 'SCOPE[{index}] = {key}: {values}'    
-    variableformat = 'VARIABLE[{index}] = {key}: {name}' 
+    labelformat = 'LABELS = {}'
     
     def __init__(self, *args, data, variables, **kwargs):
         assert isinstance(data, (xr.Dataset))
-        super().__init__(*args, data=data, **kwargs)  
-        self.__variables = variables.__class__([(key, variables[key]) for key in (*self.datakeys, *self.headerkeys, *self.scopekeys)])
-    
+        super().__init__(*args, data=data, variables=variables, **kwargs)  
+
     @property
     def dataset(self): return self.data  
     @property
@@ -183,9 +185,9 @@ class ArrayTable(TableBase):
         items = {key:self.dataset[key] for key in self.datakeys}
         for item in items.values(): item.attrs = self.dataset.attrs
         return items
-    
     @property
-    def variables(self): return self.__variables 
+    def arrays(self): return [dataarray.values for dataarray in self.dataarrays.values()]
+    
     @property
     def datavariables(self): return {key:self.variables[key] for key in self.datakeys}        
     @property
@@ -202,6 +204,8 @@ class ArrayTable(TableBase):
     @property
     def shape(self): return tuple(self.dataset.sizes.values())
     
+    def items(self): return [*self.datakeys, *self.headerkeys, *self.scopekeys]
+    
     @property
     def datakeys(self): return tuple(self.dataset.data_vars.keys())
     @property
@@ -210,28 +214,39 @@ class ArrayTable(TableBase):
     def scopekeys(self): return tuple(self.dataset.attrs.keys())
     @property
     def axeskeys(self): return (*self.headerkeys, *self.scopekeys)
+    def labelkeys(self, datakey=None): 
+        if datakey is None: 
+            assert self.layers == 1
+            datakey = self.datakeys[0]
+        if isinstance(datakey, int): datakey = self.datakeys[datakey]
+        return self.dataset.data_vars.variables[datakey].dims
     
     @property
     def headers(self): return {key:value.values for key, value in self.dataset.coords.items()}
     @property
     def scope(self): return {key:value for key, value in self.dataset.attrs.items()}
     @property
-    def axes(self): return {key:(self.headers[key] if key in self.headerkeys else self.scope[key]) for key in self.axeskeys}
-       
-    def items(self): return [*self.datakeys, *self.headerkeys, *self.scopekeys]
-    def todict(self): return dict(data=self.dataset, name=self.name, variables=self.variables)
+    def axes(self): return {key:(self.headers[key] if key in self.headerkeys else self.scope[key]) for key in self.axeskeys}   
+    def labels(self, datakey=None): 
+        if datakey is None: 
+            assert self.layers == 1
+            datakey = self.datakeys[0]
+        if isinstance(datakey, int): datakey = self.datakeys[datakey]      
+        return SODict([(key, self.headers[key]) for key in self.labelkeys(datakey)])
     
     @property
     def strings(self): return '\n\n'.join([self.datastrings, self.headerstrings, self.scopestrings, self.variablestrings])
     @property
-    def datastrings(self): return '\n\n'.join([self.dataformat.format(index=index, key=uppercase(key, withops=True), values=self.dataset.data_vars[key].values) for index, key in zip(range(len(self.datakeys)), self.datakeys)])
+    def datastrings(self): 
+        labels = tuple([uppercase(labelkey, withops=True) for labelkey in self.labelkeys()])
+        return '\n\n'.join([self.dataformat.format(index=index, key=uppercase(key, withops=True), values=self.dataset.data_vars[key].values, labels=labels) for index, key in zip(range(len(self.datakeys)), self.datakeys)])
     @property
-    def headerstrings(self): return '\n'.join([self.headerformat.format(index=index, key=uppercase(axis, withops=True), values=self.dataset.coords[axis].values) for index, axis in zip(range(len(self.headerkeys)), self.headerkeys)])
+    def headerstrings(self): 
+        return '\n'.join([self.headerformat.format(index=index, key=uppercase(axis, withops=True), values=self.dataset.coords[axis].values) for index, axis in zip(range(len(self.headerkeys)), self.headerkeys)])
     @property
-    def scopestrings(self): return '\n'.join([self.scopeformat.format(index=index, key=uppercase(key, withops=True), values=self.dataset.attrs[key]) for index, key in zip(range(len(self.scopekeys)), self.scopekeys)])
-    @property
-    def variablestrings(self): return '\n'.join([self.variableformat.format(index=index, key=uppercase(key, withops=True), name=values.name()) for index, key, values in zip(range(len(self.variables)), self.variables.keys(), self.variables.values())])  
-    
+    def scopestrings(self): 
+        return '\n'.join([self.scopeformat.format(index=index, key=uppercase(key, withops=True), values=self.dataset.attrs[key]) for index, key in zip(range(len(self.scopekeys)), self.scopekeys)])
+
     def __getitem__(self, items): 
         if isinstance(items, (list, tuple)):
             assert all([item in self.datakeys for item in items])
@@ -276,6 +291,13 @@ class ArrayTable(TableBase):
         newdataset.coords[axis] = pd.Index([self.variables[axis].fromstr(item) for item in newdataset.coords[axis].values])
         newdataset = newdataset.sortby(axis, ascending=ascending)
         newdataset.coords[axis] = pd.Index([str(item) for item in newdataset.coords[axis].values], name=axis)
+        newdataset.attrs = self.dataset.attrs
+        return self.__class__(data=newdataset, variables=self.variables, name=self.name)
+
+    def transpose(self, *headerkeys):
+        assert all([key in self.headerkeys for key in headerkeys])
+        order = headerkeys + tuple([key for key in self.headerkeys if key not in headerkeys])
+        newdataset = self.dataset.transpose(*order)
         newdataset.attrs = self.dataset.attrs
         return self.__class__(data=newdataset, variables=self.variables, name=self.name)
 
