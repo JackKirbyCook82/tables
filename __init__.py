@@ -105,6 +105,8 @@ class FlatTable(TableBase):
         
     @property
     def dataframe(self): return self.data
+    @property
+    def series(self): return self.data.squeeze()
 
     @property
     def layers(self): return 1
@@ -167,6 +169,17 @@ class FlatTable(TableBase):
         variables = {key:value for key, value in self.variables.items() if key in dataframe.columns}
         return ArrayTable(data=xarray, variables=variables, name=self.name)
 
+    def todataframe(self, columns, index=None):
+        if index: dataframe = self.dataframe.set_index(index, drop=True)
+        else: dataframe = self.dataframe
+        return dataframe[_aslist(columns)]
+    
+    def toseries(self, column, index=None):
+        assert isinstance(column, str)
+        if index: dataframe = self.dataframe.set_index(index, drop=True)
+        else: dataframe = self.dataframe
+        return dataframe[column].squeeze()
+
 
 class ArrayTable(TableBase):
     dataformat = 'DATA[{index}] = {key} {labels}:\n{values}'
@@ -182,7 +195,7 @@ class ArrayTable(TableBase):
     def dataset(self): return self.data  
     @property
     def dataarrays(self): 
-        items = {key:self.dataset[key] for key in self.datakeys}
+        items = {key:self.data[key] for key in self.datakeys}
         for item in items.values(): item.attrs = self.dataset.attrs
         return items
     @property

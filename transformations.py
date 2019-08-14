@@ -77,7 +77,7 @@ class Transformation(ABC):
     @getscope
     def __alongaxis(self, dataarrays, variables, *args, datakey, axis, **kwargs):
         newdataarrays = {datakey:self.datatransform(*args, axis=axis, dataarray=dataarrays[datakey], variable=variables[axis], **kwargs)}
-        newvariables = {datakey:self.datavariable(*args, variable=variables[datakey], **kwargs)}
+        newvariables = {datakey:self.datavariable(*args, axis=axis, variable=variables[datakey], **kwargs)}
         return newdataarrays, newvariables
     
     @transform.register('with_axis')
@@ -140,8 +140,8 @@ class Scale:
     def datatransform(self, *args, axis, dataarray, variable, how, **kwargs):
         return self.xarray_funcs[how](dataarray, *args, axis=axis, **kwargs)
         
-    def datavariable(self, *args, variable, how, **kwargs):
-        return variable.scale(*args, how=how, **kwargs)
+    def datavariable(self, *args, axis, variable, how, **kwargs):
+        return variable.scale(*args, how=how, along='axis', **kwargs)
 
 
 @Transformation.register('with_axis', required=('how',), xarray_funcs={'summation':xar.summation, 'mean':xar.mean, 'stdev':xar.stdev, 'minimum':xar.minimum, 'maximum':xar.maximum}, varray_funcs={'summation':var.summation})
