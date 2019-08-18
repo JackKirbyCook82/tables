@@ -8,11 +8,8 @@ Created on Sun Jun 2 2019
 
 from abc import ABC, abstractmethod
 import pandas as pd
-import xarray as xr
 from collections import OrderedDict as ODict
-from functools import update_wrapper
 
-from utilities.dispatchers import clskey_singledispatcher as keydispatcher
 import utilities.xarrays as xar
 import utilities.narrays as nar
 import variables.varrays as var
@@ -32,239 +29,184 @@ def setheader(xarray, axis, header):
     return xarray 
 
 
-def getscope(function):
-    def wrapper(dataarrays, variables, *args, **kwargs):
-        newdataarrays, newvariables = function(dataarrays, variables, *args, **kwargs)
-        newattrslist = [newdataarray.attrs for newdataarray in newdataarrays.values()]
-        newscope = newattrslist.pop(0)
-        assert all([newattrs == newscope for newattrs in newattrslist])
-        return newdataarrays, newvariables, newscope
-    update_wrapper(wrapper, function)
-    return wrapper
-
-
 class Transformation(ABC):
-    def __init__(self, *args, **hyperparms): 
+    def __init__(self, **hyperparms): 
         self.hyperparms = {key:value for key, value in self.defaults.items()}
         self.hyperparms.update(hyperparms)  
         assert all([key in self.hyperparms.keys() for key in self.required])        
-    def __repr__(self): return '{}(transformtype={}, extract={}, hyperparms={})'.format(self.__class__.__name__, self.transformtype, self.extract, self.hyperparms)
+    def __repr__(self): return '{}(hyperparms={})'.format(self.__class__.__name__, self.transformtype, self.extract, self.hyperparms)
 
-    def __call__(self, table, *args, **kwargs):
+    def __call__(self, table, *args, axis, **kwargs):
+        assert table.layers == 1
         TableClass = table.__class__
-        dataarrays, variables, name = table.dataarrays, table.variables.copy(), table.name
+        dataarrays, variables = table.dataarrays, table.variables
+        datakey = table.datakeys[0]
+
+        newdataarray = self.execute(dataarrays[datakey], *args, axis=axis, datavariable=variables[datakey], axisvariable=variables[axis], **self.hyperparms, **kwargs)
+        newvariables = variables.update(self.variables(variables, *args, datakey=datakey, axis=axis, **self.hyperparms, **kwargs))
         
-        newdataarrays, newvariables, newscope = self.execute(dataarrays, variables, *args, **self.hyperparms, **kwargs)
-        if not self.extract: dataarrays.update(newdataarrays)          
-        else: dataarrays = newdataarrays
+        newdataset = newdataarray.to_dataset()
+        newdataset.attrs = table.scope
+        return TableClass(data=newdataset, variables=newvariables, name=table.name)
 
-        variables.update(newvariables)  
-        dataset = xr.merge([dataarray.to_dataset() for key, dataarray in dataarrays.items()])   
-        dataset.attrs = newscope   
-        return TableClass(data=dataset, variables=variables, name=name)
-
-    @keydispatcher('transformtype')
-    def transform(self, transformtype, dataarrays, variables, *args, **kwargs): pass
-
-    @transform.register('over_data')
-    @getscope
-    def __overdata(self, dataarrays, variables, *args, datakey, **kwargs):
-        newdataarrays = {datakey:self.datatransform(*args, axis=datakey, dataarray=dataarrays[datakey], variable=variables[datakey], **kwargs)}
-        newvariables = {datakey:self.datavariable(*args, variable=variables[datakey], **kwargs)}
-        return newdataarrays, newvariables
-            
-    @transform.register('along_axis')
-    @getscope
-    def __alongaxis(self, dataarrays, variables, *args, datakey, axis, **kwargs):
-        newdataarrays = {datakey:self.datatransform(*args, axis=axis, dataarray=dataarrays[datakey], variable=variables[axis], **kwargs)}
-        newvariables = {datakey:self.datavariable(*args, axis=axis, variable=variables[datakey], **kwargs)}
-        return newdataarrays, newvariables
-    
-    @transform.register('with_axis')
-    @getscope
-    def __withaxis(self, dataarrays, variables, *args, axis, **kwargs):
-        newdataarrays = {datakey:self.datatransform(*args, axis=axis, dataarray=dataarrays[datakey], variable=variables[axis], **kwargs) for datakey, dataarray in dataarrays.items()}
-        newvariables = {datakey:self.datavariable(*args, variable=variables[datakey], **kwargs) for datakey, dataarray in dataarrays.items()}
-        newvariables[axis] = self.axisvariable(*args, variable=variables[axis], **kwargs) 
-        return newdataarrays, newvariables
-    
-    @transform.register('over_axis')
-    @getscope
-    def __overaxis(self, dataarrays, variables, *args, axis, **kwargs):
-        newdataarrays = {datakey:self.datatransform(*args, axis=axis, dataarray=dataarray, variable=variables[axis], **kwargs) for datakey, dataarray in dataarrays.items()}   
-        newvariables = {axis:self.axisvariable(*args, variable=variables[axis], **kwargs)}
-        return newdataarrays, newvariables
-      
-    @transform.register('against_axis')
-    @getscope
-    def __againstaxis(self, dataarrays, variables, *args, datakey, axis, **kwargs):
-        newdataarrays = {datakey:self.datatransform(*args, datakey=datakey, axis=axis, dataarray=dataarrays[datakey], datavariable=variables[datakey], axisvariable=variables[axis], **kwargs)}
-        newvariables = {datakey:self.datavariable(*args, variable=variables[datakey], **kwargs)}
-        newvariables[axis] = self.axisvariable(*args, variable=variables[axis], **kwargs) 
-        return newdataarrays, newvariables
-    
     @abstractmethod
-    def execute(self, dataarrays, variables, *args, **kwargs): pass
-    @abstractmethod
-    def datatransform(self, *args, axis, dataarray, **kwargs): pass
-    def datavariable(self, *args, variable, **kwargs): return variable
-    def axisvariable(self, *args, variable, **kwargs): return variable
+    def execute(self, dataarray, *args, datakey, axis, datavariable, axisvariable, **kwargs): pass
+    def variables(self, variables, *args, datakey, axis, **kwargs): return {}    
 
     @classmethod
-    def register(cls, transformtype, extract=False, required=(), xarray_funcs={}, varray_funcs={}, **defaults):  
+    def register(cls, required=(), xarray_funcs={}, varray_funcs={}, **defaults):  
         assert isinstance(required, tuple)
         assert all([isinstance(funcs, dict) for funcs in (xarray_funcs, varray_funcs)])
         
-        def wrapper(subclass):                        
-            def execute(self, dataarrays, variables, *args, **kwargs): 
-                return self.transform(dataarrays, variables, *args, transformtype=transformtype, **kwargs)
-            
+        def wrapper(subclass):                                    
             name = subclass.__name__
             bases = (subclass, cls)
-            attrs = dict(transformtype=transformtype, extract=extract, execute=execute, defaults=defaults, required=required, xarray_funcs=xarray_funcs, varray_funcs=varray_funcs)           
+            attrs = dict(defaults=defaults, required=required, xarray_funcs=xarray_funcs, varray_funcs=varray_funcs)           
             return type(name, bases, attrs)
         return wrapper  
-
-
-@Transformation.register('over_data', required=('how',), xarray_funcs={'multiply':xar.multiply, 'divide':xar.divide})
-class Factor:
-    def datatransform(self, *args, axis, dataarray, variable, how, factor, **kwargs):
-        return self.xarray_funcs[how](dataarray, *args, how=how, factor=factor, **kwargs)
     
-    def datavariable(self, *args, variable, how, factor, **kwargs):
-        return variable.factor(*args, how=how, factor=factor, **kwargs)
-
-
-@Transformation.register('along_axis', required=('how',), xarray_funcs={'normalize':xar.normalize, 'standardize':xar.standardize, 'minmax':xar.minmax})
+    
+@Transformation.register(required=('how',), xarray_funcs={'normalize':xar.normalize, 'standardize':xar.standardize, 'minmax':xar.minmax})
 class Scale: 
-    def datatransform(self, *args, axis, dataarray, variable, how, **kwargs):
-        return self.xarray_funcs[how](dataarray, *args, axis=axis, **kwargs)
-        
-    def datavariable(self, *args, axis, variable, how, **kwargs):
-        return variable.scale(*args, how=how, along='axis', **kwargs)
-
-
-@Transformation.register('with_axis', required=('how',), xarray_funcs={'summation':xar.summation, 'mean':xar.mean, 'stdev':xar.stdev, 'minimum':xar.minimum, 'maximum':xar.maximum}, varray_funcs={'summation':var.summation})
-class Reduction: 
-    def datatransform(self, *args, axis, dataarray, variable, how, **kwargs):
-        varray = getheader(dataarray, axis, variable)
+    def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, **kwargs):
         xarray = self.xarray_funcs[how](dataarray, *args, axis=axis, **kwargs)
-        varray = self.varray_funcs['summation'](varray, *args, **kwargs)
-        xarray.attrs.update({axis:str(varray)}) 
+        xarray.name = dataarray.name
         return xarray
         
-    def datavariable(self, *args, variable, how, **kwargs):        
-        return variable.transformation(*args, method='reduction', how=how, **kwargs)
+    def variables(self, variables, *args, datakey, axis, how, **kwargs):
+        return {datakey:variables[datakey].scale(*args, how=how, axis=axis, **kwargs)} 
+
+
+@Transformation.register(required=('how',), xarray_funcs={'summation':xar.summation, 'mean':xar.mean, 'stdev':xar.stdev, 'minimum':xar.minimum, 'maximum':xar.maximum}, varray_funcs={'summation':var.summation})
+class Reduction: 
+    def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, **kwargs):
+        varray = getheader(dataarray, axis, axisvariable)
+        xarray = self.xarray_funcs[how](dataarray, *args, axis=axis, **kwargs)
+        varray = self.varray_funcs['summation'](varray, *args, **kwargs)
+        xarray = xarray.assign_coords(**{axis:str(varray)}).expand_dims(axis)   
+        xarray.name = dataarray.name
+        return xarray
+        
+    def variables(self, variables, *args, datakey, axis, how, **kwargs):       
+        return {datakey:variables[datakey].transformation(*args, method='reduction', how=how, **kwargs)}    
     
     
-@Transformation.register('with_axis', xarray_funcs={'wtaverage':xar.weightaverage}, varray_funcs={'summation':var.summation})
+@Transformation.register(xarray_funcs={'wtaverage':xar.weightaverage}, varray_funcs={'summation':var.summation})
 class WeightedAverage:
-    def datatransform(self, *args, axis, dataarray, variable, how, **kwargs):
-        varray = getheader(dataarray, axis, variable)
+    def execute(self, dataarray, *args, axis, datavariable, axisvariable, **kwargs):
+        varray = getheader(dataarray, axis, axisvariable)
         values = [item.value for item in varray]
         xarray = self.xarray_funcs['wtaverage'](dataarray, *args, axis=axis, weights=values, **kwargs)
         varray = self.varray_funcs['summation'](varray, *args, **kwargs)
         xarray = setheader(xarray, axis, varray)
+        xarray.name = dataarray.name
         return xarray
         
-    def datavariable(self, *args, variable, how, **kwargs):
-        return variable.transformation(*args, method='reduction', how='wtaverage', **kwargs)     
+    def variables(self, variables, *args, datakey, axis, how, **kwargs):
+        return {datakey:variables[datakey].transformation(*args, method='reduction', how='wtaverage', **kwargs)}       
     
     
-@Transformation.register('with_axis', required=('direction',), xarray_funcs={'cumulate':xar.cumulate}, varray_funcs={'cumulate':var.cumulate})
+@Transformation.register(required=('direction',), xarray_funcs={'cumulate':xar.cumulate}, varray_funcs={'cumulate':var.cumulate})
 class Cumulate: 
-    def datatransform(self, *args, axis, dataarray, variable, direction, **kwargs):
-        varray = getheader(dataarray, axis, variable)
+    def execute(self, dataarray, *args, axis, datavariable, axisvariable, direction, **kwargs):
+        varray = getheader(dataarray, axis, axisvariable)
         xarray = self.xarray_funcs['cumulate'](dataarray, *args, axis=axis, direction=direction, **kwargs)
         varray = self.varray_funcs['cumulate'](varray, *args, direction=direction, **kwargs)
         xarray = setheader(xarray, axis, varray)
+        xarray.name = dataarray.name
         return xarray
     
     
-@Transformation.register('with_axis', required=('direction',), xarray_funcs={'uncumulate':xar.uncumulate}, varray_funcs={'uncumulate':var.uncumulate})
+@Transformation.register(required=('direction',), xarray_funcs={'uncumulate':xar.uncumulate}, varray_funcs={'uncumulate':var.uncumulate})
 class Uncumulate: 
-    def datatransform(self, *args, axis, dataarray, variable, direction, **kwargs):
-        varray = getheader(dataarray, axis, variable)
+    def execute(self, dataarray, *args, axis, datavariable, axisvariable, direction, **kwargs):
+        varray = getheader(dataarray, axis, axisvariable)
         xarray = self.xarray_funcs['uncumulate'](dataarray, *args, axis=axis, direction=direction, **kwargs)
         varray = self.varray_funcs['uncumulate'](varray, *args, direction=direction, **kwargs)
         xarray = setheader(xarray, axis, varray)
+        xarray.name = dataarray.name
         return xarray
+        
     
-
-@Transformation.register('with_axis', required=('how', 'period'), xarray_funcs={'average':xar.movingaverage}, varray_funcs={'average':var.movingaverage, 'total':var.movingtotal, 'bracket':var.movingbracket, 'differential':var.movingdifferential})
+@Transformation.register(required=('how', 'period'), xarray_funcs={'average':xar.movingaverage}, varray_funcs={'average':var.movingaverage, 'total':var.movingtotal, 'bracket':var.movingbracket, 'differential':var.movingdifferential})
 class MovingAverage:
-    def datatransform(self, *args, axis, dataarray, variable, how, period, **kwargs):
-        varray = getheader(dataarray, axis, variable)
+    def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, period, **kwargs):
+        varray = getheader(dataarray, axis, axisvariable)
         xarray = self.xarray_funcs['average'](dataarray, *args, axis=axis, period=period, **kwargs)
         varray = self.varray_funcs[how](varray, *args, period=period, **kwargs)
         xarray = setheader(xarray, axis, varray)
+        xarray.name = dataarray.name
         return xarray
-        
-    def datavariable(self, *args, variable, how, period, **kwargs):
-        return variable.moving(*args, how='average', period=period, **kwargs)        
-    def axisvariable(self, *args, variable, how, period, **kwargs):
-        return variable.moving(*args, how=how, period=period, **kwargs)     
-        
+       
+    def variables(self, variables, *args, datakey, axis, how, period, **kwargs):    
+        return {datakey:variables[datakey].moving(*args, how='average', period=period, **kwargs), 
+                axis:variables[axis].moving(*args, how=how, period=period, **kwargs)}
+       
     
-@Transformation.register('over_axis', required=('how',), varray_funcs={'consolidate':var.consolidate})
+@Transformation.register(required=('how',), varray_funcs={'consolidate':var.consolidate})
 class Consolidate: 
-    def datatransform(self, *args, axis, dataarray, variable, how, **kwargs):
-        varray = getheader(dataarray, axis, variable)
+    def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, **kwargs):
+        varray = getheader(dataarray, axis, axisvariable)
         varray = self.varray_funcs['consolidate'](varray, *args, how=how, **kwargs)
         xarray = setheader(dataarray, axis, varray)
+        xarray.name = dataarray.name
         return xarray
         
-    def axisvariable(self, *args, variable, how, **kwargs):
-        return variable.consolidate(*args, how=how, **kwargs)  
+    def variables(self, variables, *args, datakey, axis, how, **kwargs):
+      return {axis:variables[axis].consolidate(*args, how=how, **kwargs)}    
 
 
-@Transformation.register('over_axis', required=('how',), varray_funcs={'unconsolidate':var.unconsolidate})
+@Transformation.register(required=('how',), varray_funcs={'unconsolidate':var.unconsolidate})
 class Unconsolidate:
-    def datatransform(self, *args, axis, dataarray, variable, how, **kwargs):
-        varray = getheader(dataarray, axis, variable)
+    def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, **kwargs):
+        varray = getheader(dataarray, axis, axisvariable)
         varray = self.varray_funcs['unconsolidate'](varray, *args, how=how, **kwargs)
         xarray = setheader(dataarray, axis, varray)
+        xarray.name = dataarray.name
         return xarray
         
-    def axisvariable(self, *args, variable, how, **kwargs):
-        return variable.unconsolidate(*args, how=how, **kwargs)  
+    def variables(self, variables, *args, datakey, axis, how, **kwargs):
+        return {axis:variables[axis].unconsolidate(*args, how=how, **kwargs)}      
+    
 
-
-@Transformation.register('over_axis', varray_funcs={'bound':var.bound})
+@Transformation.register(varray_funcs={'bound':var.bound})
 class Bound:
-    def datatransform(self, *args, axis, dataarray, variable, how, bounds, **kwargs):
-        varray = getheader(dataarray, axis, variable)
+    def execute(self, dataarray, *args, axis, datavariable, axisvariable, bounds, **kwargs):
+        varray = getheader(dataarray, axis, axisvariable)
         varray = self.varray_funcs['bound'](varray, *args, bounds=bounds, **kwargs)
         xarray = setheader(dataarray, axis, varray)
-        return xarray
-
+        xarray.name = dataarray.name
+        return xarray  
     
-@Transformation.register('with_axis', required=('how',), xarray_funcs={'interpolate':xar.interpolate}, varray_funcs={'factory':var.varray_fromvalues})
+    
+@Transformation.register(required=('how',), xarray_funcs={'interpolate':xar.interpolate}, varray_funcs={'factory':var.varray_fromvalues})
 class Interpolate:
-    def datatransform(self, *args, axis, dataarray, variable, how, values, **kwargs):
-        varray = getheader(dataarray, axis, variable)
+    def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, values, **kwargs):
+        varray = getheader(dataarray, axis, axisvariable)
         dataarray.coords[axis] = [item.value for item in varray]        
         xarray = self.xarray_funcs['interpolate'](dataarray, *args, axis=axis, values=values, how=how, **kwargs)
-        varray = self.varray_funcs['factory'](values, *args, variable=variable, how=how, **kwargs)
+        varray = self.varray_funcs['factory'](values, *args, variable=axisvariable, how=how, **kwargs)
         xarray = setheader(xarray, axis, varray)
+        xarray.name = dataarray.name
         return xarray
 
 
-@Transformation.register('against_axis', extract=True, required=('how',), xarray_funcs={'inversion':nar.inversion, 'factory':xar.xarray_fromvalues}, varray_funcs={'factory':var.varray_fromvalues})
+@Transformation.register(required=('how',), xarray_funcs={'inversion':nar.inversion, 'factory':xar.xarray_fromvalues}, varray_funcs={'factory':var.varray_fromvalues})
 class Inversion:
-    def datatransform(self, *args, datakey, axis, dataarray, datavariable, axisvariable, how, values, **kwargs):
-        narray, axes, attrs = dataarray.values, dataarray.coords, dataarray.attrs   
+    def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, values, **kwargs):
+        narray, dims, attrs = dataarray.values, dataarray.coords, dataarray.attrs   
         varray = getheader(dataarray, axis, axisvariable)
         header = [item.value for item in varray]   
         index = dataarray.get_axis_num(axis)  
         narray = self.xarray_funcs['inversion'](narray, header, values, *args, index=index, axis=axis, how=how, **kwargs)
         varray = self.varray_funcs['factory'](values, *args, variable=datavariable, how=how, **kwargs)
-        axes = ODict([(key, value) if key != axis else (datakey, [str(item) for item in varray]) for key, value in zip(axes.to_index().names, axes.to_index().levels)]) 
-        axes = ODict([(key, pd.Index(value, name=key)) for key, value in axes.items()])
-        xarray = self.xarray_funcs['factory']({axis:narray}, axes=axes, scope=attrs, forcedataset=False)  
-        return xarray        
-
-
+        dims = ODict([(key, value) if key != axis else (dataarray.name, [str(item) for item in varray]) for key, value in zip(dims.to_index().names, dims.to_index().levels)]) 
+        dims = ODict([(key, pd.Index(value, name=key)) for key, value in dims.items()])
+        xarray = self.xarray_funcs['factory']({axis:narray}, dims=dims, attrs=attrs, forcedataset=False)  
+        xarray.name = axis
+        return xarray   
+   
+    
 class Group(object):
     transformtype = 'over_column'
     required = ('right',)
@@ -275,37 +217,24 @@ class Group(object):
         self.hyperparms.update(hyperparms)  
         assert all([key in self.hyperparms.keys() for key in self.required])          
     def __repr__(self): return '{}(transformtype={}, hyperparms={})'.format(self.__class__.__name__, self.transformtype, self.hyperparms)   
-    
+
     def __call__(self, table, *args, column, **kwargs):
         TableClass = table.__class__
         dataframe, variables, name = table.dataframe, table.variables.copy(), table.name
         
-        newdataframe, newvariables = self.execute(dataframe, variables, *args, column=column, **self.hyperparms, **kwargs)        
-        variables.update({column:newvariables})           
-        return TableClass(data=newdataframe, variables=variables, name=name)
-        
-    def execute(self, dataframe, variables, *args, **kwargs): return self.transform(dataframe, variables, *args, **kwargs)    
-    def transform(self, dataframe, variables, *args, column, **kwargs):
-        newdataframe = self.datatransform(*args, column=column, dataframe=dataframe, variable=variables[column], **kwargs)
-        newvariables = self.datavariable(*args, variable=variables[column], **kwargs)
-        return newdataframe, newvariables
-                
-    def datatransform(self, *args, dataframe, column, variable, groups, right, **kwargs):
+        newdataframe = self.execute(dataframe, *args, column=column, variable=variables[column], **self.hyperparms, **kwargs)
+        newvariable = self.variables(variables, *args, column=column, **kwargs)
+
+        newvariables = variables.update({column:newvariable})    
+        return TableClass(data=newdataframe, variables=newvariables, name=name)
+          
+    def execute(self, dataframe, *args, column, variable, groups, right, **kwargs):
         dataframe[column] = dataframe[column].apply(lambda x: str(variable.fromstr(x).group(*args, groups=groups, right=right, **kwargs)))
         return dataframe
         
-    def datavariable(self, *args, variable, **kwargs):
-        return variable.unconsolidate(*args, how='group', **kwargs)
-
-
-
-
-
-
-
-
-
-
+    def variables(self, variables, *args, column, **kwargs):
+        return variables[column].unconsolidate(*args, how='group', **kwargs)    
+    
 
 
 

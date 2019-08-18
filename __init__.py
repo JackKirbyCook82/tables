@@ -17,7 +17,6 @@ from utilities.dataframes import dataframe_fromxarray
 from utilities.xarrays import xarray_fromdataframe
 from utilities.strings import uppercase
 from utilities.dispatchers import clskey_singledispatcher as keydispatcher
-from utilities.dictionarys import SliceOrderedDict as SODict
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
@@ -43,7 +42,6 @@ def get_option(key): return _OPTIONS[key]
 def show_options(): print('Table Options: ' + ', '.join([' = '.join([key, str(value)]) for key, value in _OPTIONS.items()]))
 
 
-_ALL = '*'
 _buffer = lambda : _OPTIONS['bufferchar'] * _OPTIONS['linewidth']
 _aslist = lambda items: [items] if not isinstance(items, (list, tuple)) else list(items)
 Structure = ntuple('Structure', 'layers dim shape fields')
@@ -63,7 +61,7 @@ class TableBase(ABC):
     def variables(self): return self.__variables
     
     @property
-    def tablename(self): return '{}: {}'.format(self.__class__.__name__.upper(), self.__name)   
+    def tablename(self): return '{}: {}'.format(self.__class__.__name__.upper(), uppercase(self.__name, withops=True))   
     @property
     def name(self): return self.__name
          
@@ -153,21 +151,13 @@ class FlatTable(TableBase):
         dataframe[key] = dataframe[key].apply(str)
         return dict(data=dataframe, variables=variables, name=self.name)    
     
-    def unflatten(self, datakeys, headerkeys, scopekeys, *args, **kwargs):
-        assert all([isinstance(item, (str, tuple, list)) for item in (datakeys, headerkeys, scopekeys)])
-        datakeys, headerkeys, scopekeys = [_aslist(item) for item in (datakeys, headerkeys, scopekeys)]
-                
-        assert all([key in self.dataframe.columns for key in (*datakeys, *headerkeys, *scopekeys)])        
-        assert all([len(set(self.dataframe[key].values)) == 1 for key in scopekeys if key in self.dataframe.columns])
-        
-        headerkeys.sort(key=lambda key: len(set(self.dataframe[key].values)))
-        dataframe = self.dataframe[[*datakeys, *headerkeys, *scopekeys]]
+    def unflatten(self, *datakeys, **kwargs):
+        dataframe = self.dataframe.copy()
         for datakey in datakeys:
             try: dataframe.loc[:, datakey] = dataframe[datakey].apply(lambda x: self.variables[datakey].fromstr(x).value)
-            except: pass
-        xarray = xarray_fromdataframe(dataframe, *args, datakeys=datakeys, axekeys=headerkeys, attrkeys=scopekeys, forcedataset=True, **kwargs)
-        variables = {key:value for key, value in self.variables.items() if key in dataframe.columns}
-        return ArrayTable(data=xarray, variables=variables, name=self.name)
+            except: pass        
+        xarray = xarray_fromdataframe(dataframe, datakeys=datakeys, forcedataset=True, **kwargs)
+        return ArrayTable(data=xarray, variables=self.variables, name=self.name)
 
     def todataframe(self, columns, index=None):
         if index: dataframe = self.dataframe.set_index(index, drop=True)
@@ -182,7 +172,7 @@ class FlatTable(TableBase):
 
 
 class ArrayTable(TableBase):
-    dataformat = 'DATA[{index}] = {key} {labels}:\n{values}'
+    dataformat = 'DATA[{index}] = {key}, {axes}:\n{values}'
     headerformat = 'HEADER[{index}] = {key}:\n{values}'
     scopeformat = 'SCOPE[{index}] = {key}: {values}'    
     labelformat = 'LABELS = {}'
@@ -195,11 +185,11 @@ class ArrayTable(TableBase):
     def dataset(self): return self.data  
     @property
     def dataarrays(self): 
-        items = {key:self.data[key] for key in self.datakeys}
-        for item in items.values(): item.attrs = self.dataset.attrs
-        return items
+        dataarrays = {datakey:self.dataset[datakey] for datakey in self.datakeys}
+        for datakey, dataarray in dataarrays.items(): dataarray.attrs = self.dataset.attrs
+        return dataarrays
     @property
-    def arrays(self): return [dataarray.values for dataarray in self.dataarrays.values()]
+    def arrays(self): return {datakey:self.dataset[datakey].values for datakey in self.datakeys}
     
     @property
     def datavariables(self): return {key:self.variables[key] for key in self.datakeys}        
@@ -225,37 +215,20 @@ class ArrayTable(TableBase):
     def headerkeys(self): return tuple(self.dataset.dims)
     @property
     def scopekeys(self): return tuple(self.dataset.attrs.keys())
+        
     @property
-    def axeskeys(self): return (*self.headerkeys, *self.scopekeys)
-    def labelkeys(self, datakey=None): 
-        if datakey is None: 
-            assert self.layers == 1
-            datakey = self.datakeys[0]
-        if isinstance(datakey, int): datakey = self.datakeys[datakey]
-        return self.dataset.data_vars.variables[datakey].dims
-    
-    @property
-    def headers(self): return {key:value.values for key, value in self.dataset.coords.items()}
+    def headers(self): return {key:tuple([value for value in self.dataset.coords[key].values]) for key in self.dataset.dims}
     @property
     def scope(self): return {key:value for key, value in self.dataset.attrs.items()}
-    @property
-    def axes(self): return {key:(self.headers[key] if key in self.headerkeys else self.scope[key]) for key in self.axeskeys}   
-    def labels(self, datakey=None): 
-        if datakey is None: 
-            assert self.layers == 1
-            datakey = self.datakeys[0]
-        if isinstance(datakey, int): datakey = self.datakeys[datakey]      
-        return SODict([(key, self.headers[key]) for key in self.labelkeys(datakey)])
     
     @property
     def strings(self): return '\n\n'.join([self.datastrings, self.headerstrings, self.scopestrings, self.variablestrings])
     @property
     def datastrings(self): 
-        labels = tuple([uppercase(labelkey, withops=True) for labelkey in self.labelkeys()])
-        return '\n\n'.join([self.dataformat.format(index=index, key=uppercase(key, withops=True), values=self.dataset.data_vars[key].values, labels=labels) for index, key in zip(range(len(self.datakeys)), self.datakeys)])
+        return '\n\n'.join([self.dataformat.format(index=index, key=uppercase(key, withops=True), values=self.dataset.data_vars[key].values, axes=tuple([uppercase(axes, withops=True) for axes in self.dataset[key].dims])) for index, key in zip(range(len(self.datakeys)), self.datakeys)])
     @property
     def headerstrings(self): 
-        return '\n'.join([self.headerformat.format(index=index, key=uppercase(axis, withops=True), values=self.dataset.coords[axis].values) for index, axis in zip(range(len(self.headerkeys)), self.headerkeys)])
+        return '\n'.join([self.headerformat.format(index=index, key=uppercase(key, withops=True), values=self.dataset.coords[key].values) for index, key in zip(range(len(self.headerkeys)), self.headerkeys)])
     @property
     def scopestrings(self): 
         return '\n'.join([self.scopeformat.format(index=index, key=uppercase(key, withops=True), values=self.dataset.attrs[key]) for index, key in zip(range(len(self.scopekeys)), self.scopekeys)])
@@ -307,44 +280,47 @@ class ArrayTable(TableBase):
         newdataset.attrs = self.dataset.attrs
         return self.__class__(data=newdataset, variables=self.variables, name=self.name)
 
-    def transpose(self, *headerkeys):
-        assert all([key in self.headerkeys for key in headerkeys])
-        order = headerkeys + tuple([key for key in self.headerkeys if key not in headerkeys])
+    def sortall(self, ascending=True):
+        table = self
+        for axis in self.headerkeys: table = table.sort(axis, ascending=ascending)
+        return table
+
+    def transpose(self, *axes):
+        assert all([key in self.headerkeys for key in axes])
+        order = axes + tuple([key for key in self.headerkeys if key not in axes])
         newdataset = self.dataset.transpose(*order)
         newdataset.attrs = self.dataset.attrs
         return self.__class__(data=newdataset, variables=self.variables, name=self.name)
 
-    def expand(self, onscope):
-        newdataset = self.dataset.assign_coords(**{onscope:self.dataset.attrs[onscope]}).expand_dims(onscope)        
-        newdataset.attrs.pop(onscope)
+    def expand(self, axis):
+        newdataset = self.dataset.assign_coords(**{axis:self.dataset.attrs[axis]}).expand_dims(axis)        
+        newdataset.attrs.pop(axis)
         return self.__class__(data=newdataset, variables=self.variables, name=self.name)
     
-    def squeeze(self, onaxis):
-        assert len(self.headers[onaxis]) == 1
-        newdataset = self.dataset.squeeze(dim=onaxis)
+    def squeeze(self, axis):
+        assert len(self.headers[axis]) == 1
+        newdataset = self.dataset.squeeze(dim=axis, drop=True)
         newdataset.attrs = self.dataset.attrs
-        newdataset.attrs.update({onaxis:self.headers[onaxis][0]})
+        newdataset.attrs.update({axis:self.headers[axis][0]})
         return self.__class__(data=newdataset, variables=self.variables, name=self.name)
 
-    def multiply(self, factor, *args, datakeys, **kwargs):
+    def __mul__(self, factor): return self.multiply(factor)
+    def multiply(self, factor, *args, **kwargs):
         assert isinstance(factor, Number)
         if factor == 1: return self
-        newdataarrays = [self.dataarrays[datakey] * factor if datakey in _aslist(datakeys) else self.dataarrays[datakey] for datakey in self.datakeys]
-        newdataset = xr.merge(newdataarrays)  
+        newdataset = self.dataset * factor
         newdataset.attrs = self.dataset.attrs
-        newvariables = self.variables.copy()
-        newvariables.update({datakey:self.variables[datakey].factor(*args, how='multiply', factor=factor, **kwargs) for datakey in _aslist(datakeys)})
+        newvariables = self.variables.update({datakey:self.variables[datakey].factor(*args, how='multiply', factor=factor, **kwargs) for datakey in _aslist(self.datakeys)})
         return self.__class__(data=newdataset, variables=newvariables, name=self.name)    
     
-    def divide(self, factor, *args, datakeys, **kwargs):
+    def __truediv__(self, factor): return self.divide(factor)
+    def divide(self, factor, *args, **kwargs):
         assert isinstance(factor, Number)
         if factor == 1: return self
-        newdataarrays = [self.dataarrays[datakey] / factor if datakey in _aslist(datakeys) else self.dataarrays[datakey] for datakey in self.datakeys]
-        newdataset = xr.merge(newdataarrays) 
+        newdataset = self.dataset / factor
         newdataset.attrs = self.dataset.attrs
-        newvariables = self.variables.copy()
-        newvariables.update({datakey:self.variables[datakey].factor(*args, how='divide', factor=factor, **kwargs) for datakey in _aslist(datakeys)})
-        return self.__class__(data=newdataset, variables=newvariables, name=self.name)      
+        newvariables = self.variables.update({datakey:self.variables[datakey].factor(*args, how='divide', factor=factor, **kwargs) for datakey in _aslist(self.datakeys)})
+        return self.__class__(data=newdataset, variables=newvariables, name=self.name)    
 
     def flatten(self): 
         dataframe = dataframe_fromxarray(self.dataset) 
