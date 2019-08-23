@@ -14,6 +14,8 @@ import utilities.xarrays as xar
 import utilities.narrays as nar
 import variables.varrays as var
 
+from tables.adapters import arraytable_transform, flattable_transform
+
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
 __all__ = ['Scale', 'Reduction', 'WeightedAverage', 'Cumulate', 'Uncumulate', 'MovingAverage', 'Consolidate', 'Unconsolidate', 'Bound', 'Interpolate', 'Inversion', 'Group']
@@ -36,22 +38,17 @@ class Transformation(ABC):
         assert all([key in self.hyperparms.keys() for key in self.required])        
     def __repr__(self): return '{}(hyperparms={})'.format(self.__class__.__name__, self.transformtype, self.extract, self.hyperparms)
 
-    def __call__(self, table, *args, axis, **kwargs):
-        assert table.layers == 1
-        TableClass = table.__class__
-        dataarrays, variables = table.dataarrays, table.variables
-        datakey = table.datakeys[0]
-
-        newdataarray = self.execute(dataarrays[datakey], *args, axis=axis, datavariable=variables[datakey], axisvariable=variables[axis], **self.hyperparms, **kwargs)
-        newvariables = variables.update(self.variables(variables, *args, datakey=datakey, axis=axis, **self.hyperparms, **kwargs))
-        
-        newdataset = newdataarray.to_dataset()
-        newdataset.attrs = table.scope
-        return TableClass(data=newdataset, variables=newvariables, name=table.name)
+    @arraytable_transform
+    def __call__(self, dataarray, *args, axis, variables, **kwargs):
+        assert isinstance(variables, dict)
+        datakey = dataarray.name
+        newdataarray = self.execute(dataarray, *args, axis=axis, datavariable=variables[datakey], axisvariable=variables[axis], **self.hyperparms, **kwargs)
+        newvariables = self.variables(variables, *args, datakey=datakey, axis=axis, **self.hyperparms, **kwargs)       
+        return newdataarray, newvariables
 
     @abstractmethod
     def execute(self, dataarray, *args, datakey, axis, datavariable, axisvariable, **kwargs): pass
-    def variables(self, variables, *args, datakey, axis, **kwargs): return {}    
+    def variables(self, variables, *args, datakey, axis, **kwargs): return {datakey:variables[datakey], axis:variables[axis]}    
 
     @classmethod
     def register(cls, required=(), xarray_funcs={}, varray_funcs={}, **defaults):  
@@ -74,7 +71,7 @@ class Scale:
         return xarray
         
     def variables(self, variables, *args, datakey, axis, how, **kwargs):
-        return {datakey:variables[datakey].scale(*args, how=how, axis=axis, **kwargs)} 
+        return {datakey:variables[datakey].scale(*args, how=how, axis=axis, **kwargs), axis:variables[axis]} 
 
 
 @Transformation.register(required=('how',), xarray_funcs={'summation':xar.summation, 'mean':xar.mean, 'stdev':xar.stdev, 'minimum':xar.minimum, 'maximum':xar.maximum}, varray_funcs={'summation':var.summation})
@@ -88,7 +85,7 @@ class Reduction:
         return xarray
         
     def variables(self, variables, *args, datakey, axis, how, **kwargs):       
-        return {datakey:variables[datakey].transformation(*args, method='reduction', how=how, **kwargs)}    
+        return {datakey:variables[datakey].transformation(*args, method='reduction', how=how, **kwargs), axis:variables[axis]}    
     
     
 @Transformation.register(xarray_funcs={'wtaverage':xar.weightaverage}, varray_funcs={'summation':var.summation})
@@ -103,7 +100,7 @@ class WeightedAverage:
         return xarray
         
     def variables(self, variables, *args, datakey, axis, how, **kwargs):
-        return {datakey:variables[datakey].transformation(*args, method='reduction', how='wtaverage', **kwargs)}       
+        return {datakey:variables[datakey].transformation(*args, method='reduction', how='wtaverage', **kwargs), axis:variables[axis]}       
     
     
 @Transformation.register(required=('direction',), xarray_funcs={'cumulate':xar.cumulate}, varray_funcs={'cumulate':var.cumulate})
@@ -153,7 +150,7 @@ class Consolidate:
         return xarray
         
     def variables(self, variables, *args, datakey, axis, how, **kwargs):
-      return {axis:variables[axis].consolidate(*args, how=how, **kwargs)}    
+      return {datakey:variables[datakey], axis:variables[axis].consolidate(*args, how=how, **kwargs)}    
 
 
 @Transformation.register(required=('how',), varray_funcs={'unconsolidate':var.unconsolidate})
@@ -166,7 +163,7 @@ class Unconsolidate:
         return xarray
         
     def variables(self, variables, *args, datakey, axis, how, **kwargs):
-        return {axis:variables[axis].unconsolidate(*args, how=how, **kwargs)}      
+        return {datakey:variables[datakey], axis:variables[axis].unconsolidate(*args, how=how, **kwargs)}      
     
 
 @Transformation.register(varray_funcs={'bound':var.bound})
@@ -218,22 +215,19 @@ class Group(object):
         assert all([key in self.hyperparms.keys() for key in self.required])          
     def __repr__(self): return '{}(transformtype={}, hyperparms={})'.format(self.__class__.__name__, self.transformtype, self.hyperparms)   
 
-    def __call__(self, table, *args, column, **kwargs):
-        TableClass = table.__class__
-        dataframe, variables, name = table.dataframe, table.variables.copy(), table.name
-        
+    @flattable_transform
+    def __call__(self, dataframe, *args, column, variables, **kwargs):
+        assert isinstance(variables, dict)
         newdataframe = self.execute(dataframe, *args, column=column, variable=variables[column], **self.hyperparms, **kwargs)
-        newvariable = self.variables(variables, *args, column=column, **kwargs)
-
-        newvariables = variables.update({column:newvariable})    
-        return TableClass(data=newdataframe, variables=newvariables, name=name)
+        newvariables = self.variables(variables, *args, column=column, **self.hyperparms, **kwargs) 
+        return newdataframe, newvariables
           
     def execute(self, dataframe, *args, column, variable, groups, right, **kwargs):
         dataframe[column] = dataframe[column].apply(lambda x: str(variable.fromstr(x).group(*args, groups=groups, right=right, **kwargs)))
         return dataframe
         
     def variables(self, variables, *args, column, **kwargs):
-        return variables[column].unconsolidate(*args, how='group', **kwargs)    
+        return {column:variables[column].unconsolidate(*args, how='group', **kwargs)}    
     
 
 
