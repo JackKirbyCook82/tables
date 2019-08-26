@@ -19,6 +19,7 @@ __copyright__ = "Copyright 2018, Jack Kirby Cook"
 __license__ = ""
 
 
+_FRAMECHAR = '='
 _OPTIONS = dict(linewidth=100, maxrows=30, maxcolumns=10, threshold=100, precision=3, fixednotation=True)
 _PDMAPPING = {"display.max_rows":"maxrows", "display.max_columns":"maxcolumns"}
 _NPMAPPING = {"linewidth":"linewidth", "threshold":"threshold", "precision":"precision", "suppress":"fixednotation"}
@@ -36,6 +37,9 @@ def set_options(*args, **kwargs):
 def get_option(key): return _OPTIONS[key]
 def show_options(): print('Table Options: ' + ', '.join([' = '.join([key, str(value)]) for key, value in _OPTIONS.items()]))
 
+
+ArrayTableView.setframe(_FRAMECHAR, _OPTIONS['linewidth'])
+FlatTableView.setframe(_FRAMECHAR, _OPTIONS['linewidth'])
 
 ArrayTable.settableview(ArrayTableView)
 FlatTable.settableview(FlatTableView)

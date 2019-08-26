@@ -10,6 +10,7 @@ from abc import ABC, abstractmethod
 import pandas as pd
 import xarray as xr
 from numbers import Number
+from collections import OrderedDict as ODict
 
 from utilities.dataframes import dataframe_fromxarray
 from utilities.xarrays import xarray_fromdataframe
@@ -45,8 +46,8 @@ class TableBase(ABC):
     def variables(self): return self.__variables
 
     def __str__(self): 
-        try: return str(self.TableView(self))
-        except TypeError: return _tableview(self)
+        if self.TableView is not None: return str(self.TableView(self))
+        else: return _tableview(self)
     def __len__(self): return self.dim  
     def __eq__(self, other):
         assert isinstance(self, type(other))
@@ -176,11 +177,21 @@ class ArrayTable(TableBase):
     @property
     def dimkeys(self): return tuple(self.dataset.dims.keys())
     @property
+    def headerkeys(self): return self.dimkeys
+    @property
     def scopekeys(self): return tuple(set(self.dataset.coords.keys()) - set(self.dataset.dims.keys()))
     @property
     def axeskeys(self): return tuple(self.dataset.coords.keys())
     @property
     def keys(self): return self.datakeys + self.axeskeys
+
+    @property
+    def headers(self): return ODict([(key, self.dataset.coords[key].values) for key in self.dimkeys])
+    @property
+    def scope(self): return {key:self.dataset.coords[key].values for key in self.scopekeys}
+    
+    def vheader(self, axis): return [self.variables[axis].fromstr(value) for value in self.headers[axis]]
+    def vscope(self, axis): return self.variables[axis].fromstr(str(self.scope[axis]))
     
     def retag(self, tags): 
         assert isinstance(tags, dict)
@@ -207,7 +218,7 @@ class ArrayTable(TableBase):
         else: raise TypeError(type(items))        
         newdataset.attrs = self.dataset.attrs
         table = self.__class__(data=newdataset, variables=self.variables.copy(), name=self.name)
-        return table.dropallna().sortall(ascending=True)
+        return table.dropallna()
 
     def sort(self, axis, ascending=True):
         assert axis in self.dimkeys
@@ -246,9 +257,10 @@ class ArrayTable(TableBase):
         newdataset.attrs = self.dataset.attrs
         return self.__class__(data=newdataset, variables=self.variables.copy(), name=self.name)
     
-    def squeeze(self, axis):
-        assert len(self.dataset.coords[axis]) == 1
-        newdataset = self.dataset.squeeze(dim=axis, drop=False)
+    def squeeze(self, *axes):
+        assert all([len(self.dataset.coords[axis]) == 1 for axis in axes])
+        newdataset = self.dataset
+        for axis in axes: newdataset = newdataset.squeeze(dim=axis, drop=False)
         newdataset.attrs = self.dataset.attrs
         return self.__class__(data=newdataset, variables=self.variables.copy(), name=self.name)
 

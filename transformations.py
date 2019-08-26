@@ -25,10 +25,14 @@ __license__ = ""
 
 _aslist = lambda items: [items] if not isinstance(items, (list, tuple)) else list(items)
 
-def getheader(xarray, axis, variable): return [variable.fromstr(item) for item in xarray.coords[axis].values]
-def setheader(xarray, axis, header): 
-    xarray.coords[axis] = pd.Index([str(item) for item in header], name=axis)
-    return xarray 
+headerkeys = lambda dataarray: tuple(dataarray.dims)
+scopekeys = lambda dataarray: tuple(set(dataarray.coords.keys()) - set(dataarray.dims))
+
+
+def getheader(dataarray, axis, variable): return [variable.fromstr(item) for item in dataarray.coords[axis].values]
+def setheader(dataarray, axis, header): 
+    dataarray.coords[axis] = pd.Index([str(item) for item in header], name=axis)
+    return dataarray 
 
 
 class Transformation(ABC):
@@ -191,15 +195,21 @@ class Interpolate:
 @Transformation.register(required=('how',), xarray_funcs={'inversion':nar.inversion, 'factory':xar.xarray_fromvalues}, varray_funcs={'factory':var.varray_fromvalues})
 class Inversion:
     def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, values, **kwargs):
-        narray, dims, attrs = dataarray.values, dataarray.coords, dataarray.attrs   
+        narray, coords, attrs = dataarray.values, dataarray.coords, dataarray.attrs   
         varray = getheader(dataarray, axis, axisvariable)
-        header = [item.value for item in varray]   
+        headervalues = [item.value for item in varray]   
         index = dataarray.get_axis_num(axis)  
-        narray = self.xarray_funcs['inversion'](narray, header, values, *args, index=index, axis=axis, how=how, **kwargs)
-        varray = self.varray_funcs['factory'](values, *args, variable=datavariable, how=how, **kwargs)
-        dims = ODict([(key, value) if key != axis else (dataarray.name, [str(item) for item in varray]) for key, value in zip(dims.to_index().names, dims.to_index().levels)]) 
-        dims = ODict([(key, pd.Index(value, name=key)) for key, value in dims.items()])
-        xarray = self.xarray_funcs['factory']({axis:narray}, dims=dims, attrs=attrs, forcedataset=False)  
+        
+        narray = self.xarray_funcs['inversion'](narray, headervalues, values, *args, index=index, axis=axis, how=how, **kwargs)
+        varray = self.varray_funcs['factory'](values, *args, variable=datavariable, how=how, **kwargs)        
+        
+        newheaderstrs = [str(item) for item in varray]
+        assert len(newheaderstrs) == len(set(newheaderstrs))
+        newheader = pd.Index(newheaderstrs, name=dataarray.name)        
+        dims = ODict([(key, value) if key != axis else (newheader.name, newheader) for key, value in zip(coords.to_index().names, coords.to_index().levels)]) 
+        scope = ODict([(key, coords[key]) for key in scopekeys(dataarray)])
+
+        xarray = self.xarray_funcs['factory']({axis:narray}, dims=dims, scope=scope, attrs=attrs, forcedataset=False) 
         xarray.name = axis
         return xarray   
    

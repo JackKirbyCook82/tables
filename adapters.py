@@ -6,7 +6,7 @@ Created on Tues Aug 20 2019
 
 """
 
-from functools import update_wrapper
+from functools import update_wrapper, reduce
 import xarray as xr
 
 from tables.alignment import align_arraytables, align_variables
@@ -19,6 +19,7 @@ __license__ = ""
 
 
 _aslist = lambda items: [items] if not isinstance(items, (tuple, list)) else list(items)  
+_getheader = lambda dataarray, axis, variable: [variable.fromstr(item) for item in dataarray.coords[axis].values]
 
 
 def flattable_transform(function):
@@ -67,7 +68,10 @@ def arraytable_operation(function):
         variables = align_variables(table.variables, other.variables)
 
         datakey, otherdatakey = table.datakeys[0], other.datakeys[0]
-        dataarray, otherdataarray = table.dataarrays[datakey], other.squeeze(axis).dataarrays[otherdatakey]
+        if axis:
+            other = other.squeeze(axis)
+            assert reduce(lambda x, y: x.add(y, *args, **kwargs), table.vheader(axis)) == other.vscope(axis)
+        dataarray, otherdataarray = table.dataarrays[datakey], other.dataarrays[otherdatakey]
         
         newdataarray, newvariables = function(dataarray, otherdataarray, *args, variables=variables, **kwargs)  
         variables.update(newvariables)        
