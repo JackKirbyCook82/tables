@@ -21,7 +21,7 @@ __license__ = ""
 
 _NAMEFORMAT = '{clsname}: {name}'
 _ARRAYFORMAT = 'DATA[{index}] = {key}: {axes}\n{values}'
-_HEADERFORMAT = '{key}: {values}'
+_HEADERFORMAT = '{key}:\n{values}'
 _SCOPEFORMAT = '{key}: {values}'    
 _VARIABLEFORMAT = 'VARIABLE[{index}] = {key}: {name}' 
 _STRUCTUREFORMAT = 'Layers={layers}, Dims={dims}, Shape={shape}, Fields={fields}'
@@ -53,7 +53,10 @@ class TableViewBase(ABC):
     framelength = 100
     
     @classmethod
-    def setframe(cls, framechar, framelength): cls.framechar, cls.length = framechar, framelength
+    def factory(cls, *args, framechar, framelength, **kwargs): 
+        cls.framechar, cls.framelength = framechar, framelength
+        return cls
+        
     @property
     def frame(self): return self.framechar * self.framelength
     

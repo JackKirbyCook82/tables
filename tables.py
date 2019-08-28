@@ -29,9 +29,11 @@ _tableview = lambda table: '\n\n'.join([uppercase(table.name, withops=True), str
  
 
 class TableBase(ABC):
-    TableView = None
+    View = None
     @classmethod
-    def settableview(cls, TableView): cls.TableView = TableView
+    def factory(cls, View): 
+        cls.View = View
+        return cls
     
     def __init__(self, *args, data, name, variables, **kwargs): 
         self.__data = data
@@ -46,7 +48,7 @@ class TableBase(ABC):
     def variables(self): return self.__variables
 
     def __str__(self): 
-        if self.TableView is not None: return str(self.TableView(self))
+        if self.View is not None: return str(self.View(self))
         else: return _tableview(self)
     def __len__(self): return self.dim  
     def __eq__(self, other):
@@ -260,9 +262,32 @@ class ArrayTable(TableBase):
     def squeeze(self, *axes):
         assert all([len(self.dataset.coords[axis]) == 1 for axis in axes])
         newdataset = self.dataset
-        for axis in axes: newdataset = newdataset.squeeze(dim=axis, drop=False)
+        for axis in axes: 
+            if axis in self.scopekeys: pass
+            elif axis in self.headerkeys: newdataset = newdataset.squeeze(dim=axis, drop=False)
+            else: raise ValueError(axis)
         newdataset.attrs = self.dataset.attrs
         return self.__class__(data=newdataset, variables=self.variables.copy(), name=self.name)
+
+    def removescope(self, *scope):
+        assert all([item in self.scopekeys for item in scope])
+        newdataset, newvariables = self.dataset, self.variables.copy()
+        for item in scope: 
+            newdataset = newdataset.drop(item)
+            newvariables.pop(item)
+        newdataset.attrs = self.dataset.attrs        
+        return self.__class__(data=newdataset, variables=newvariables, name=self.name)
+
+    def addscope(self, variables={}, **scope):
+        assert isinstance(variables, dict)
+        assert all([item not in self.scopekeys for item in scope])
+        assert all([key in variables.keys() for key in scope.keys()])        
+        newdataset, newvariables = self.dataset, self.variables.copy()
+        for key, value in scope.items():
+            newdataset = newdataset.assign_coords(**{key:value})
+            newvariables[key] = variables[key]
+        newdataset.attrs = self.dataset.attrs
+        return self.__class__(data=newdataset, variables=newvariables, name=self.name)
 
     def __mul__(self, factor): return self.multiply(factor)
     def multiply(self, factor, *args, **kwargs):

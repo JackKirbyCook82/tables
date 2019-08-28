@@ -12,7 +12,7 @@ from tables.adapters import arraytable_operation
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
-__all__ = ['add', 'subtract', 'multiply', 'divide']
+__all__ = ['add', 'subtract', 'multiply', 'divide', 'average']
 __copyright__ = "Copyright 2018, Jack Kirby Cook"
 __license__ = ""
 
@@ -36,14 +36,14 @@ def operation(function):
 @operation
 def add(dataarray, other, *args, **kwargs):    
     newdataarray = dataarray + other    
-    newdataarray.name = '+'.join([dataarray.name, other.name])
+    newdataarray.name = '+'.join([dataarray.name, other.name]) if dataarray.name != other.name else dataarray.name
     return newdataarray
 
 
 @operation
 def subtract(dataarray, other, *args, **kwargs):
     newdataarray = dataarray - other    
-    newdataarray.name = '-'.join([dataarray.name, other.name])
+    newdataarray.name = '-'.join([dataarray.name, other.name]) if dataarray.name != other.name else dataarray.name
     return newdataarray
 
 
@@ -61,10 +61,17 @@ def divide(dataarray, other, *args, **kwargs):
     return newdataarray
 
 
+@operation
+def average(dataarray, other, *args, **kwargs):
+    newdataarray = dataarray + other
+    newdataarray = newdataarray / 2
+    if dataarray.name == other.name: newdataarray.name = dataarray.name
+    else: newdataarray.name = 'Avg{}&{}'.format(dataarray.name, other.name)
+    return newdataarray
+            
+            
 
-            
-            
-            
+          
             
             
             

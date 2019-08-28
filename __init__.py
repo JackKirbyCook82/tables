@@ -8,9 +8,13 @@ Created on Mon August 19 2019
 
 import pandas as pd
 import numpy as np
+import json
 
-from tables.tables import ArrayTable, FlatTable
-from tables.views import ArrayTableView, FlatTableView
+#from tables.tables import ArrayTable, FlatTable
+#from tables.views import ArrayTableView, FlatTableView
+import tables.tables as tbls
+import tables.views as views
+
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
@@ -25,21 +29,49 @@ _PDMAPPING = {"display.max_rows":"maxrows", "display.max_columns":"maxcolumns"}
 _NPMAPPING = {"linewidth":"linewidth", "threshold":"threshold", "precision":"precision", "suppress":"fixednotation"}
 
 
-def apply_options():
+def apply_options(*args, **kwargs):
     for key, value in _PDMAPPING.items(): pd.set_option(key, _OPTIONS[value])
     np.set_printoptions(**{key:_OPTIONS[value] for key, value in _NPMAPPING.items()})
 
+
 def set_options(*args, **kwargs):
+    global ArrayTable, FlatTable
+    global ArrayTableView, FlatTableView
     global _OPTIONS
     _OPTIONS.update(kwargs)
+    ArrayTable = ArrayTable.factory(ArrayTableView.factory(framechar=_FRAMECHAR, framelength=_OPTIONS['linewidth']))
+    FlatTable = FlatTable.factory(FlatTableView.factory(framechar=_FRAMECHAR, framelength=_OPTIONS['linewidth']))
     apply_options()
+
     
 def get_option(key): return _OPTIONS[key]
-def show_options(): print('Table Options: ' + ', '.join([' = '.join([key, str(value)]) for key, value in _OPTIONS.items()]))
+def show_options(): 
+    optionstrings = json.dumps({key:str(value) for key, value in _OPTIONS.items()}, sort_keys=True, indent=3, separators=(',', ' : '))
+    print('Table Options:\n{}\n'.format(optionstrings))
 
 
-ArrayTableView.setframe(_FRAMECHAR, _OPTIONS['linewidth'])
-FlatTableView.setframe(_FRAMECHAR, _OPTIONS['linewidth'])
+ArrayTableView = views.ArrayTableView.factory(framechar=_FRAMECHAR, framelength=_OPTIONS['linewidth'])
+ArrayTable = tbls.ArrayTable.factory(ArrayTableView)
 
-ArrayTable.settableview(ArrayTableView)
-FlatTable.settableview(FlatTableView)
+FlatTableView = views.FlatTableView.factory(framechar=_FRAMECHAR, framelength=_OPTIONS['linewidth'])
+FlatTable = tbls.FlatTable.factory(FlatTableView)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+
