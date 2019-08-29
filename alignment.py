@@ -64,7 +64,7 @@ def align_variables(variables, others, *args, method, **kwargs): raise KeyError(
 @_align_variables
 def align_variables_outer(variables, others, *args, **kwargs):
     variables = {key:(variables[key] if key in variables.keys() else others[key]) for key in _union(variables.keys(), others.keys())}
-    others = {key:(others[key] if key in others.keys() else others[key]) for key in _union(variables.keys(), others.keys())}
+    others = {key:(others[key] if key in others.keys() else variables[key]) for key in _union(variables.keys(), others.keys())}
     for key in _union(variables.keys(), others.keys()): assert variables[key] == others[key]
     return variables, others
 
@@ -72,7 +72,7 @@ def align_variables_outer(variables, others, *args, **kwargs):
 @_align_variables
 def align_variables_inner(variables, others, *args, **kwargs):
     variables = {key:(variables[key] if key in variables.keys() else others[key]) for key in _intersection(variables.keys(), others.keys())}
-    others = {key:(others[key] if key in others.keys() else others[key]) for key in _intersection(variables.keys(), others.keys())}
+    others = {key:(others[key] if key in others.keys() else variables[key]) for key in _intersection(variables.keys(), others.keys())}
     for key in _intersection(variables.keys(), others.keys()): assert variables[key] == others[key]       
     return variables, others
 

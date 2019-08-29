@@ -195,8 +195,7 @@ class ArrayTable(TableBase):
     def vheader(self, axis): return [self.variables[axis].fromstr(value) for value in self.headers[axis]]
     def vscope(self, axis): return self.variables[axis].fromstr(str(self.scope[axis]))
     
-    def retag(self, tags): 
-        assert isinstance(tags, dict)
+    def retag(self, **tags): 
         newdataset = self.dataset.rename(name_dict=tags)
         variables = self.variables
         for oldkey, newkey in tags.items(): variables[newkey] = variables.pop(oldkey)

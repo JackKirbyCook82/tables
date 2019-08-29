@@ -9,12 +9,13 @@ Created on Sun Jun 2 2019
 from abc import ABC, abstractmethod
 import pandas as pd
 from collections import OrderedDict as ODict
+import xarray as xr
 
 import utilities.xarrays as xar
 import utilities.narrays as nar
 import variables.varrays as var
 
-from tables.adapters import arraytable_transform, flattable_transform
+from tables.adapters import flattable_transform, arraytable_inversion, arraytable_transform
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
@@ -43,17 +44,26 @@ class Transformation(ABC):
     def __repr__(self): return '{}(hyperparms={})'.format(self.__class__.__name__, self.transformtype, self.extract, self.hyperparms)
 
     @arraytable_transform
-    def __call__(self, dataarray, *args, axis, variables, **kwargs):
-        assert isinstance(variables, dict)
-        datakey = dataarray.name
-        newdataarray = self.execute(dataarray, *args, axis=axis, datavariable=variables[datakey], axisvariable=variables[axis], **self.hyperparms, **kwargs)
-        newvariables = self.variables(variables, *args, datakey=datakey, axis=axis, **self.hyperparms, **kwargs)       
-        return newdataarray, newvariables
+    def __call__(self, xarray, *args, axis, variables, **kwargs):
+        assert isinstance(variables, dict)        
+        if isinstance(xarray, xr.DataArray): 
+            datakey = xarray.name
+            newxarray = self.execute(xarray, *args, axis=axis, datavariable=variables[datakey], axisvariable=variables[axis], **self.hyperparms, **kwargs)
+            newdatavariables = {datakey:self.datavariable(variables[xarray.name], *args, datakey=datakey, axis=axis, **self.hyperparms, **kwargs)}
+        elif isinstance(xarray, xr.Dataset):
+            newdataarrays = [self.execute(dataarray, *args, axis=axis, datavariable=variables[datakey], axisvariable=variables[axis], **self.hyperparms, **kwargs) for datakey, dataarray in xarray.data_vars.items()]
+            newxarray = xr.merge(newdataarrays, join='outer')  
+            newdatavariables = {datakey:self.datavariable(variables[datakey], *args, datakey=datakey, axis=axis, **self.hyperparms, **kwargs) for datakey, dataarray in xarray.data_vars.items()}
+        else: raise TypeError(type(xarray))        
+        newaxisvariables = {axis:self.axisvariable(variables[axis], *args, axis=axis, **self.hyperparms, **kwargs)}
+        newvariables = {**newdatavariables, **newaxisvariables}        
+        return newxarray, newvariables
 
     @abstractmethod
     def execute(self, dataarray, *args, datakey, axis, datavariable, axisvariable, **kwargs): pass
-    def variables(self, variables, *args, datakey, axis, **kwargs): return {datakey:variables[datakey], axis:variables[axis]}    
-
+    def datavariable(self, variable, *args, datakey, axis, **kwargs): return variable
+    def axisvariable(self, variable, *args, axis, **kwargs): return variable
+    
     @classmethod
     def register(cls, required=(), xarray_funcs={}, varray_funcs={}, **defaults):  
         assert isinstance(required, tuple)
@@ -73,10 +83,9 @@ class Scale:
         xarray = self.xarray_funcs[how](dataarray, *args, axis=axis, **kwargs)
         xarray.name = dataarray.name
         return xarray
-        
-    def variables(self, variables, *args, datakey, axis, how, **kwargs):
-        return {datakey:variables[datakey].scale(*args, how=how, axis=axis, **kwargs), axis:variables[axis]} 
-
+     
+    def datavariable(self, variable, *args, datakey, axis, how, **kwargs): return variable.scale(*args, how=how, axis=axis, **kwargs)
+    
 
 @Transformation.register(required=('how',), xarray_funcs={'summation':xar.summation, 'mean':xar.mean, 'stdev':xar.stdev, 'minimum':xar.minimum, 'maximum':xar.maximum}, varray_funcs={'summation':var.summation})
 class Reduction: 
@@ -87,10 +96,9 @@ class Reduction:
         xarray = xarray.assign_coords(**{axis:str(varray)}).expand_dims(axis)   
         xarray.name = dataarray.name
         return xarray
-        
-    def variables(self, variables, *args, datakey, axis, how, **kwargs):       
-        return {datakey:variables[datakey].transformation(*args, method='reduction', how=how, **kwargs), axis:variables[axis]}    
-    
+     
+    def datavariable(self, variable, *args, datakey, axis, how, **kwargs): return variable.transformation(*args, method='reduction', how=how, **kwargs)   
+
     
 @Transformation.register(xarray_funcs={'wtaverage':xar.weightaverage}, varray_funcs={'summation':var.summation})
 class WeightedAverage:
@@ -102,9 +110,8 @@ class WeightedAverage:
         xarray = setheader(xarray, axis, varray)
         xarray.name = dataarray.name
         return xarray
-        
-    def variables(self, variables, *args, datakey, axis, how, **kwargs):
-        return {datakey:variables[datakey].transformation(*args, method='reduction', how='wtaverage', **kwargs), axis:variables[axis]}       
+     
+    def datavariable(self, variable, *args, datakey, axis, how, **kwargs): return variable.transformation(*args, method='reduction', how='wtaverage', **kwargs)   
     
     
 @Transformation.register(required=('direction',), xarray_funcs={'cumulate':xar.cumulate}, varray_funcs={'cumulate':var.cumulate})
@@ -138,12 +145,11 @@ class MovingAverage:
         xarray = setheader(xarray, axis, varray)
         xarray.name = dataarray.name
         return xarray
-       
-    def variables(self, variables, *args, datakey, axis, how, period, **kwargs):    
-        return {datakey:variables[datakey].moving(*args, how='average', period=period, **kwargs), 
-                axis:variables[axis].moving(*args, how=how, period=period, **kwargs)}
-       
+     
+    def datavariable(self, variable, *args, datakey, axis, how, period, **kwargs): return variable.moving(*args, how='average', period=period, **kwargs)
+    def axisvariable(self, variable, *args, axis, how, period, **kwargs): return variable.moving(*args, how=how, period=period, **kwargs)
     
+
 @Transformation.register(required=('how',), varray_funcs={'consolidate':var.consolidate})
 class Consolidate: 
     def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, **kwargs):
@@ -152,9 +158,8 @@ class Consolidate:
         xarray = setheader(dataarray, axis, varray)
         xarray.name = dataarray.name
         return xarray
-        
-    def variables(self, variables, *args, datakey, axis, how, **kwargs):
-      return {datakey:variables[datakey], axis:variables[axis].consolidate(*args, how=how, **kwargs)}    
+     
+    def axisvariable(self, variable, *args, axis, how, **kwargs): return variable.consolidate(*args, how=how, **kwargs)
 
 
 @Transformation.register(required=('how',), varray_funcs={'unconsolidate':var.unconsolidate})
@@ -165,10 +170,9 @@ class Unconsolidate:
         xarray = setheader(dataarray, axis, varray)
         xarray.name = dataarray.name
         return xarray
+
+    def axisvariable(self, variable, *args, axis, how, **kwargs): return variable.unconsolidate(*args, how=how, **kwargs)
         
-    def variables(self, variables, *args, datakey, axis, how, **kwargs):
-        return {datakey:variables[datakey], axis:variables[axis].unconsolidate(*args, how=how, **kwargs)}      
-    
 
 @Transformation.register(varray_funcs={'bound':var.bound})
 class Bound:
@@ -192,8 +196,28 @@ class Interpolate:
         return xarray
 
 
-@Transformation.register(required=('how',), xarray_funcs={'inversion':nar.inversion, 'factory':xar.xarray_fromvalues}, varray_funcs={'factory':var.varray_fromvalues})
-class Inversion:
+class Inversion(object):
+    required=('how',)
+    defaults = {'how':'linear', 'fill':{}, 'smoothing':{}}
+    xarray_funcs={'inversion':nar.inversion, 'factory':xar.xarray_fromvalues}
+    varray_funcs={'factory':var.varray_fromvalues}
+    
+
+    def __init__(self, **hyperparms): 
+        self.hyperparms = {key:value for key, value in self.defaults.items()}
+        self.hyperparms.update(hyperparms)  
+        assert all([key in self.hyperparms.keys() for key in self.required])        
+    def __repr__(self): return '{}(hyperparms={})'.format(self.__class__.__name__, self.transformtype, self.extract, self.hyperparms)
+
+    @arraytable_inversion
+    def __call__(self, dataarray, *args, axis, variables, **kwargs):
+        assert isinstance(variables, dict) 
+        assert isinstance(dataarray, xr.DataArray)
+        datakey = dataarray.name
+        newdataarray = self.execute(dataarray, *args, axis=axis, datavariable=variables[datakey], axisvariable=variables[axis], **self.hyperparms, **kwargs)
+        newvariables = {datakey:variables[datakey], axis:variables[axis]}        
+        return newdataarray, newvariables
+    
     def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, values, **kwargs):
         narray, coords, attrs = dataarray.values, dataarray.coords, dataarray.attrs   
         varray = getheader(dataarray, axis, axisvariable)
@@ -215,7 +239,6 @@ class Inversion:
    
     
 class Group(object):
-    transformtype = 'over_column'
     required = ('right',)
     defaults = {'right': True}
     
@@ -229,15 +252,15 @@ class Group(object):
     def __call__(self, dataframe, *args, column, variables, **kwargs):
         assert isinstance(variables, dict)
         newdataframe = self.execute(dataframe, *args, column=column, variable=variables[column], **self.hyperparms, **kwargs)
-        newvariables = self.variables(variables, *args, column=column, **self.hyperparms, **kwargs) 
+        newvariables = {column:self.variable(variables[column], *args, column=column, **self.hyperparms, **kwargs)} 
         return newdataframe, newvariables
           
     def execute(self, dataframe, *args, column, variable, groups, right, **kwargs):
         dataframe[column] = dataframe[column].apply(lambda x: str(variable.fromstr(x).group(*args, groups=groups, right=right, **kwargs)))
         return dataframe
         
-    def variables(self, variables, *args, column, **kwargs):
-        return {column:variables[column].unconsolidate(*args, how='group', **kwargs)}    
+    def variables(self, variable, *args, column, **kwargs):
+        return variable.unconsolidate(*args, how='group', **kwargs)    
     
 
 

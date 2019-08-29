@@ -9,6 +9,7 @@ Created on Fri Mar 15 2019
 from abc import ABC, abstractmethod
 import numpy as np
 from collections import namedtuple as ntuple
+from collections import OrderedDict as ODict
 
 from utilities.strings import uppercase
 
@@ -72,11 +73,12 @@ class TableViewBase(ABC):
 
 class ArrayTableView(TableViewBase):
     def __init__(self, arraytable):
-        dataarrays = {datakey:arraytable[datakey].dropallna().sortall(ascending=True).dataarrays[datakey] for datakey in arraytable.datakeys}   
-        self.__datastrings = {datakey:_arraystring(dataindex, datakey, dataarray.dims, dataarray.values) for dataindex, datakey, dataarray in zip(range(len(dataarrays)), dataarrays.keys(), dataarrays.values())}
-        self.__headerstrings = {datakey:'\n'.join([_headerstring(dimkey, dataarray.coords[dimkey].values) for dimkey in _headerkeys(dataarray)]) for datakey, dataarray in dataarrays.items()}
+        dataarrays = ODict([(datakey, arraytable[datakey].dropallna().sortall(ascending=True).dataarrays[datakey]) for datakey in arraytable.datakeys])   
+        self.__datastrings = ODict([(datakey, _arraystring(dataindex, datakey, dataarray.dims, dataarray.values)) for dataindex, datakey, dataarray in zip(range(len(dataarrays)), dataarrays.keys(), dataarrays.values())])
+        self.__headerstrings = ODict([(datakey, '\n'.join([_headerstring(dimkey, dataarray.coords[dimkey].values) for dimkey in _headerkeys(dataarray)])) for datakey, dataarray in dataarrays.items()])
         self.__scopestrings = {datakey:'\n'.join([_scopestring(nondimkey, dataarray.coords[nondimkey].values) for nondimkey in _scopekeys(dataarray)]) for datakey, dataarray in dataarrays.items()}
-        self.__datakeys = set([*self.__datastrings, *self.__headerstrings])
+        assert self.__datastrings.keys() == self.__headerstrings.keys() == self.__scopestrings.keys()
+        self.__datakeys = list(self.__datastrings.keys()) 
         super().__init__(arraytable)
 
     @property

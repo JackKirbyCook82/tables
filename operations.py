@@ -6,13 +6,13 @@ Created on Sun Jun 2 2019
 
 """
 
-from functools import update_wrapper
+from functools import update_wrapper, reduce
 
 from tables.adapters import arraytable_operation
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
-__all__ = ['add', 'subtract', 'multiply', 'divide', 'average']
+__all__ = ['add', 'subtract', 'multiply', 'divide']
 __copyright__ = "Copyright 2018, Jack Kirby Cook"
 __license__ = ""
 
@@ -24,50 +24,51 @@ def operation(function):
     @arraytable_operation
     def wrapper(dataarray, other, *args, variables, **kwargs):
         assert isinstance(other, type(dataarray))
-        method = function.__name__
-        datakey, otherdatakey = dataarray.name, other.name        
-        newvariable = variables[datakey].operation(variables[otherdatakey], *args, method=method, **kwargs)
-        newdataarray = function(dataarray, other, *args, **kwargs)
-        newvariables = {newdataarray.name:newvariable}      
+        newdataarray, newvariable = function(dataarray, other, *args, variables=variables, **kwargs)
+        newvariables = {newdataarray.name:newvariable}  
         return newdataarray, newvariables
     update_wrapper(wrapper, function)
     return wrapper
 
 @operation
-def add(dataarray, other, *args, **kwargs):    
+def add(dataarray, other, *args, variables, **kwargs):    
     newdataarray = dataarray + other    
     newdataarray.name = '+'.join([dataarray.name, other.name]) if dataarray.name != other.name else dataarray.name
-    return newdataarray
+    newvariable = variables[dataarray.name].operation(variables[other.name], *args, method='add', **kwargs)
+    return newdataarray, newvariable
 
 
 @operation
-def subtract(dataarray, other, *args, **kwargs):
+def subtract(dataarray, other, *args, variables, **kwargs):
     newdataarray = dataarray - other    
     newdataarray.name = '-'.join([dataarray.name, other.name]) if dataarray.name != other.name else dataarray.name
-    return newdataarray
+    newvariable = variables[dataarray.name].operation(variables[other.name], *args, method='subtract', **kwargs)
+    return newdataarray, newvariable
 
 
 @operation
-def multiply(dataarray, other, *args, **kwargs):
+def multiply(dataarray, other, *args, variables, **kwargs):
     newdataarray = dataarray * other    
     newdataarray.name = '*'.join([dataarray.name, other.name])
-    return newdataarray
+    newvariable = variables[dataarray.name].operation(variables[other.name], *args, method='multiply', **kwargs)
+    return newdataarray, newvariable
 
 
 @operation
-def divide(dataarray, other, *args, **kwargs):
+def divide(dataarray, other, *args, variables, **kwargs):
     newdataarray = dataarray / other  
     newdataarray.name = '/'.join([dataarray.name, other.name])
-    return newdataarray
+    newvariable = variables[dataarray.name].operation(variables[other.name], *args, method='divide', **kwargs)
+    return newdataarray, newvariable
 
 
-@operation
-def average(dataarray, other, *args, **kwargs):
-    newdataarray = dataarray + other
-    newdataarray = newdataarray / 2
-    if dataarray.name == other.name: newdataarray.name = dataarray.name
-    else: newdataarray.name = 'Avg{}&{}'.format(dataarray.name, other.name)
-    return newdataarray
+#def average(dataarrays, *args, variables, **kwargs):
+#    newdataarray = reduce(lambda x, y: x + y, _aslist(dataarrays)) / len(_aslist(dataarrays))
+#    assert set([[dataarray.name for dataarray in _aslist(dataarrays)]]) == 1
+#    newdataarray.name = _aslist(dataarrays)[0].name
+#    assert set([variables[dataarray.name] for dataarray in _aslist(dataarrays)]) == 1
+#    newvariable = variables[_aslist(dataarrays)[0].name]
+#    return newdataarray, newvariable
             
             
 
