@@ -9,12 +9,16 @@ Created on Tues Aug 27 2019
 from functools import update_wrapper
 import xarray as xr
 
+from tables.adapters import arraytable_combine, arraytable_layer, arraytable_reconcile
+
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
-__all__ = ['merge', 'combine', 'append']
+__all__ = ['merge', 'concat', 'append']
 __copyright__ = "Copyright 2018, Jack Kirby Cook"
 __license__ = ""
 
+
+_RECONCILIATION = {'avg': lambda x, y: (x + y)/2, 'max': lambda x, y: max([x, y]), 'min': lambda x, y: min([x, y])}
 
 _aslist = lambda items: [items] if not isinstance(items, (list, tuple)) else list(items)     
 
@@ -22,7 +26,7 @@ _aslist = lambda items: [items] if not isinstance(items, (list, tuple)) else lis
 def combinationloop(function):
     def wrapper(xarray, others, *args, **kwargs):
         newxarray = xarray
-        for other in _aslist(others): newxarray = function(xarray, other, *args, **kwargs)
+        for other in _aslist(others): newxarray = function(newxarray, other, *args, **kwargs)
         return newxarray
     update_wrapper(wrapper, function)
     return wrapper
@@ -30,16 +34,18 @@ def combinationloop(function):
 
 def combination(function):
     @combinationloop
-    def wrapper(dataarray, other, *args, axis, **kwargs):
-        assert isinstance(other, type(dataarray))
-        assert dataarray.name == other.name
-        newdataset = function(dataarray, other, *args, axis=axis, **kwargs)
-        newdataset.name = dataarray.name
-        return newdataset
+    def wrapper(xarray, other, *args, axis=None, axes=[], **kwargs):
+        assert isinstance(xarray, type(other))
+        axes = [item for item in [*_aslist(axis), *_aslist(axes)] if item is not None]
+        if len(axes) == 0: newxarray = function(xarray, other, *args, **kwargs)
+        elif len(axes) == 1: newxarray = function(xarray, other, *args, axis=axes[0], **kwargs)
+        else: newxarray = function(xarray, other, *args, axes=axes, **kwargs)
+        return newxarray
     update_wrapper(wrapper, function)
     return wrapper
 
 
+@arraytable_combine
 @combination
 def merge(dataarray, other, *args, axis, **kwargs):
     dataarray, other = dataarray.expand_dims(axis), other.expand_dims(axis)
@@ -47,25 +53,36 @@ def merge(dataarray, other, *args, axis, **kwargs):
     return newdataarray
 
 
+@arraytable_combine
 @combination
-def combine(dataarray, other, *args, axis, **kwargs):
+def concat(dataarray, other, *args, axis, **kwargs):
     newdataarray = xr.concat([dataarray, other], dim=axis, data_vars='all') 
     return newdataarray
 
 
+@arraytable_combine
 @combination
-def append(dataarray, other, *args, axis, **kwargs):
+def append(dataarray, other, *args, axis, **kwargs):  
     other = other.expand_dims(axis)
     newdataarray = xr.concat([dataarray, other], dim=axis, data_vars='all')
     return newdataarray
 
 
-#@combinationloop
-#def layer(xarray, other, *args, axis, **kwargs):
-#    assert isinstance(xarray, (xr.DataArray, xr.Dataset))
-#    assert isinstance(other, (xr.DataArray, xr.Dataset))
-#    newdataset = xr.merge([xarray, other], join='outer')   
-#    return newdataset
+@arraytable_layer
+@combination
+def layer(xarray, other, *args, **kwargs):
+    newdataset = xr.merge([xarray, other], join='outer')   
+    return newdataset
+
+
+@arraytable_reconcile
+@combination
+def reconcile(dataarray, other, *args, method, **kwargs):
+    function = lambda x, y: _RECONCILIATION[method](x, y) 
+    dataarray, other = xr.align(dataarray, other, join='exact', copy=True)
+    newdataarray = function(dataarray, other)
+    return newdataarray
+
 
     
     

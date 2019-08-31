@@ -254,6 +254,7 @@ class ArrayTable(TableBase):
         return self.__class__(data=newdataset, variables=self.variables.copy(), name=self.name)
 
     def expand(self, axis):
+        assert axis in self.scopekeys
         newdataset = self.dataset.expand_dims(axis)        
         newdataset.attrs = self.dataset.attrs
         return self.__class__(data=newdataset, variables=self.variables.copy(), name=self.name)
@@ -268,24 +269,13 @@ class ArrayTable(TableBase):
         newdataset.attrs = self.dataset.attrs
         return self.__class__(data=newdataset, variables=self.variables.copy(), name=self.name)
 
-    def removescope(self, *scope):
-        assert all([item in self.scopekeys for item in scope])
+    def removescope(self, *axes):
+        assert all([axis in self.scopekeys for axis in axes])
         newdataset, newvariables = self.dataset, self.variables.copy()
-        for item in scope: 
-            newdataset = newdataset.drop(item)
-            newvariables.pop(item)
+        for axis in axes: 
+            newdataset = newdataset.drop(axis)
+            newvariables.pop(axis)
         newdataset.attrs = self.dataset.attrs        
-        return self.__class__(data=newdataset, variables=newvariables, name=self.name)
-
-    def addscope(self, variables={}, **scope):
-        assert isinstance(variables, dict)
-        assert all([item not in self.scopekeys for item in scope])
-        assert all([key in variables.keys() for key in scope.keys()])        
-        newdataset, newvariables = self.dataset, self.variables.copy()
-        for key, value in scope.items():
-            newdataset = newdataset.assign_coords(**{key:value})
-            newvariables[key] = variables[key]
-        newdataset.attrs = self.dataset.attrs
         return self.__class__(data=newdataset, variables=newvariables, name=self.name)
 
     def __mul__(self, factor): return self.multiply(factor)

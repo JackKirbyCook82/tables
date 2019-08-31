@@ -6,7 +6,7 @@ Created on Sun Jun 2 2019
 
 """
 
-from functools import update_wrapper, reduce
+from functools import update_wrapper
 
 from tables.adapters import arraytable_operation
 
@@ -62,13 +62,7 @@ def divide(dataarray, other, *args, variables, **kwargs):
     return newdataarray, newvariable
 
 
-#def average(dataarrays, *args, variables, **kwargs):
-#    newdataarray = reduce(lambda x, y: x + y, _aslist(dataarrays)) / len(_aslist(dataarrays))
-#    assert set([[dataarray.name for dataarray in _aslist(dataarrays)]]) == 1
-#    newdataarray.name = _aslist(dataarrays)[0].name
-#    assert set([variables[dataarray.name] for dataarray in _aslist(dataarrays)]) == 1
-#    newvariable = variables[_aslist(dataarrays)[0].name]
-#    return newdataarray, newvariable
+
             
             
 
