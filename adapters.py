@@ -89,14 +89,15 @@ def arraytable_operation(function):
         datakey, otherdatakey = table.datakeys[0], other.datakeys[0]
         axes = [item for item in [*_aslist(kwargs.get('axis', None)), *_aslist(axes)] if item is not None]
         noncoreaxes = [*axes, datakey, otherdatakey]
+
+        for axis in axes:
+            table = table.removescope(axis) if axis in table.scopekeys else table
+            other = other.removescope(axis) if axis in other.scopekeys else other
         
-        table, other = align_arraytables(table, other, *args, method='left', noncoreaxes=noncoreaxes, **kwargs)        
+        table, other = align_arraytables(table, other, *args, method='outer', noncoreaxes=noncoreaxes, **kwargs)        
         datavariables = data_variables(table, other, *args, **kwargs)
         variables = axes_variables(table, other, *args, **kwargs)        
-        for axis in axes:
-            other = other.squeeze(axis)
-            assert reduce(lambda x, y: x.add(y, *args, **kwargs), table.vheader(axis)) == other.vscope(axis)
-        
+
         dataarray, otherdataarray = table.dataarrays[datakey], other.dataarrays[otherdatakey]
         newdataarray, newvariables = function(dataarray, otherdataarray, *args, variables=datavariables, **kwargs)  
         variables.update(newvariables)        
@@ -139,7 +140,7 @@ def arraytable_combine(function):
         assert axis not in [datakey, *otherdatakeys]
         assert all([table.variables == other.variables for other in others])
         
-        others = [align_arraytables(table, other, *args, method='left', **kwargs)[-1] for other in others]         
+        others = [align_arraytables(table, other, *args, method='outer', **kwargs)[-1] for other in others]         
         dataarray, otherdataarrays = table.dataarrays[datakey], [list(table.dataarrays.values())[0] for other in others]
         newdataarray = function(dataarray, otherdataarrays, *args, **kwargs)
         newvariables = table.variables.copy()
@@ -168,8 +169,8 @@ def arraytable_layer(function):
         others = [align_arraytables(table, other, *args, method='outer', **kwargs)[-1] for other in others] 
         dataset, otherdatasets = table.dataset, [other.dataset for other in others]        
         newdataset = function(dataset, otherdatasets, *args, **kwargs)
+        
         datavariables, axesvariables = {}, {}
-
         for other in others: 
             datavariables.update(data_variables(table, other, *args, **kwargs))
             axesvariables.update(axes_variables(table, other, *args, **kwargs))  
@@ -186,21 +187,23 @@ def arraytable_reconcile(function):
         assert table.layers == 1
         assert all([other.layers == 1 for other in others])        
         
-        datakey, otherdatakeys = table.datakeys[0], [other.datakeys[0] for other in others]
+        datakey, other_datakeys = table.datakeys[0], [other.datakeys[0] for other in others]
+        headerkeys, others_headerkeys = table.headerkeys, [other.headerkeys for other in others]
         axes = _aslist(axes)       
         
-        assert all([datakey == otherdatakey for otherdatakey in otherdatakeys])
-        assert all([axis not in (datakey, *otherdatakeys) for axis in axes])
-        assert all([axis not in table.headerkeys for axis in axes])
-        assert all([all([axis not in other.headerkeys for other in others]) for axis in axes])
+        assert all([datakey == other_datakey for other_datakey in other_datakeys])
+        assert all([set(headerkeys) == set(other_headerkeys) for other_headerkeys in others_headerkeys])        
+        
+        assert all([axis != datakey for axis in axes])
+        assert all([axis not in headerkeys for axis in axes])
 
         for axis in axes:
             table = table.removescope(axis) if axis in table.scopekeys else table
-            for other in others: other = other.removescope(axis) if axis in other.scopekeys else other
+            others = [other.removescope(axis) if axis in other.scopekeys else other for other in others]
         
         assert all([table.variables == other.variables for other in others])
             
-        others = [align_arraytables(table, other, *args, method='left', **kwargs)[-1] for other in others]                      
+        others = [align_arraytables(table, other, *args, method='outer', **kwargs)[-1] for other in others]                      
         dataarray, otherdataarrays = table.dataarrays[datakey], [list(table.dataarrays.values())[0] for other in others]
         newdataarray = function(dataarray, otherdataarrays, *args, method=method, **kwargs)
         newvariables = table.variables.copy()        

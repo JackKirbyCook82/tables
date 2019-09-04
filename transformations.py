@@ -259,7 +259,7 @@ class Group(object):
         dataframe[column] = dataframe[column].apply(lambda x: str(variable.fromstr(x).group(*args, groups=groups, right=right, **kwargs)))
         return dataframe
         
-    def variables(self, variable, *args, column, **kwargs):
+    def variable(self, variable, *args, column, **kwargs):
         return variable.unconsolidate(*args, how='group', **kwargs)    
     
 

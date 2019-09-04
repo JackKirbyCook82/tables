@@ -1,16 +1,14 @@
 # -*- coding: utf-8 -*-
 """
 Created on Mon Jul 15 2019
-@name    Calculation Objects
+@name    Processors Objects
 @author: Jack Kriby Cook
 
 """
 
-import tables as tbls
-
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
-__all__ = ['Feed', 'Pipeline', 'Calculation']
+__all__ = []
 __copyright__ = "Copyright 2018, Jack Kirby Cook"
 __license__ = ""
 

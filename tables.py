@@ -101,16 +101,18 @@ class FlatTable(TableBase):
         for oldkey, newkey in tags.items(): self.variables[newkey] = self.variables[oldkey]
         return self
 
-    def __getitem__(self, key): 
-        return self.__class__(data=self.dataframe[key], variables=self.variables, name=self.name)
-    def __setitem__(self, key, items): 
+    def __getitem__(self, columns): return self.select(*columns)
+    def __setitem__(self, column, items): 
         assert isinstance(items, dict)
         axes = _aslist(items.pop('axes'))
-        if len(axes) == 1: newitems = self.createdata(key, fromcolumns='single',  axis=axes[0], **items)
-        elif len(axes) > 1: newitems = self.createdata(key ,fromcolumns='multiple', axes=axes, **items)
+        if len(axes) == 1: newitems = self.createdata(column, fromcolumns='single',  axis=axes[0], **items)
+        elif len(axes) > 1: newitems = self.createdata(column ,fromcolumns='multiple', axes=axes, **items)
         else: raise ValueError(axes)    
         self = self.__class__(**newitems)  
 
+    def select(self, *columns): return self.__class__(data=self.dataframe[_aslist(columns)], variables=self.variables, name=self.name)
+    def drop(self, *columns): return self.select(*[column for column in self.dataframe.columns if column not in columns])
+    
     @keydispatcher('fromcolumns')
     def createdata(self, key, *args, **kwargs): raise KeyError(key)
     
@@ -135,12 +137,14 @@ class FlatTable(TableBase):
     def todataframe(self, columns, index=None):
         dataframe = self.dataframe.copy()
         if index: dataframe = dataframe.set_index(index, drop=True)
+        for column in columns: dataframe[column] = dataframe[column].apply(lambda x: self.variables[column].fromstr(x).value)
         return dataframe[_aslist(columns)]
     
     def toseries(self, column, index=None):
         assert isinstance(column, str)
         dataframe = self.dataframe.copy()
         if index: dataframe = dataframe.set_index(index, drop=True)
+        dataframe[column] = dataframe[column].apply(lambda x: self.variables[column].fromstr(x).value)
         return dataframe[column].squeeze()    
     
     def unflatten(self, *datakeys, **kwargs):
@@ -192,8 +196,8 @@ class ArrayTable(TableBase):
     @property
     def scope(self): return {key:self.dataset.coords[key].values for key in self.scopekeys}
     
-    def vheader(self, axis): return [self.variables[axis].fromstr(value) for value in self.headers[axis]]
-    def vscope(self, axis): return self.variables[axis].fromstr(str(self.scope[axis]))
+    #def vheader(self, axis): return [self.variables[axis].fromstr(value) for value in self.headers[axis]]
+    #def vscope(self, axis): return self.variables[axis].fromstr(str(self.scope[axis]))
     
     def retag(self, **tags): 
         newdataset = self.dataset.rename(name_dict=tags)
@@ -229,7 +233,7 @@ class ArrayTable(TableBase):
         newdataset.coords[axis] = pd.Index([str(item) for item in newdataset.coords[axis].values], name=axis)
         newdataset.attrs = self.dataset.attrs
         return self.__class__(data=newdataset, variables=self.variables.copy(), name=self.name)
-
+    
     def sortall(self, ascending=True):
         table = self
         for axis in self.dimkeys: table = table.sort(axis, ascending=ascending)
@@ -279,6 +283,8 @@ class ArrayTable(TableBase):
         return self.__class__(data=newdataset, variables=newvariables, name=self.name)
 
     def __mul__(self, factor): return self.multiply(factor)
+    def __truediv__(self, factor): return self.divide(factor)
+    
     def multiply(self, factor, *args, **kwargs):
         assert isinstance(factor, Number)
         if factor == 1: return self
@@ -287,8 +293,7 @@ class ArrayTable(TableBase):
         newvariables = self.variables.copy()
         newvariables.update({datakey:newvariables[datakey].factor(factor, *args, how='multiply', **kwargs) for datakey in _aslist(self.datakeys)})
         return self.__class__(data=newdataset, variables=newvariables, name=self.name)    
-    
-    def __truediv__(self, factor): return self.divide(factor)
+        
     def divide(self, factor, *args, **kwargs):
         assert isinstance(factor, Number)
         if factor == 1: return self
