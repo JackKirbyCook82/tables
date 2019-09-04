@@ -6,81 +6,84 @@ Created on Mon Jul 15 2019
 
 """
 
+from abc import ABC, abstractmethod
+
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
-__all__ = []
+__all__ = ['Feed', 'Transform', 'Calculation']
 __copyright__ = "Copyright 2018, Jack Kirby Cook"
 __license__ = ""
 
 
-#class Feed(dict): 
-#    def __init__(self, webapi, variables):
-#        self.webapi = webapi
-#        self.variables = variables
-#
-#    def __setitem__(self, key, items):
-#        assert isinstance(items, dict)
-#        super().__setitem__(key, items)
-#
-#    def setfeed(self, universe, index, header, *args, scope={}, **kwargs):
-#
-#    def tablekeys(self, universe, index, header, *args, axes=(), scope={}, **kwargs):
-#        assert isinstance(axes, tuple)
-#        assert isinstance(scope, dict)
-#        datakeys = [universe]
-#        headerkeys = [index, header, *axes]
-#        scopekeys = list(scope.keys())        
-#        return [datakeys, headerkeys, scopekeys]
-#    
-#    def __call__(self, tablekey, *args, **kwargs):
-#        items = self[tablekey]
-#        name = items.pop('name', self.webapi.__class__.__name__)
-#        self.setwebapi(**items)
-#        dataframe = self.webapi(*args, **kwargs)
-#        flattable = tbls.FlatTable(data=dataframe, variables=self.variables, name=name)
-#        arraytable = flattable.unflatten(*self.tablekeys(**items))
-#        for axis in arraytable.headerkeys: arraytable = arraytable.sort(axis, ascending=True)
-#        return arraytable
+_aslist = lambda items: [items] if not isinstance(items, (list, tuple)) else list(items)   
+_filterna = lambda items: [item for item in items if item]
 
 
-#class Pipeline(dict):
-#    def __init__(self, feed, function):
-#        self.feed = feed
-#        self.function = function
-#        
-#    def __setitem__(self, tablekey, value):
-#        assert isinstance(value, dict)
-#        super().__setitem__(tablekey, value)
-#        
-#    def __call__(self, tablekey, *args, **kwargs):
-#        items = self[tablekey]
-#        arraytable = self.feed(tablekey, *args, **kwargs)
-#        arraytable = self.function(arraytable, *args, **items, **kwargs)
-#        return arraytable
-
-
-#class Calculation(dict):
-#    def __init__(self, pipeline, function):
-#        self.pipeline = pipeline
-#        self.function = function
-#        
-#    def __setitem__(self, calculationkey, value):
-#        assert isinstance(value, dict)
-#        super().__setitem__(calculationkey, value)
-#        
-#    def __call__(self, calculationkey, *args, **kwargs):
-#        items = self[calculationkey]
-#        tablekeys = items.pop('tablekeys')
-#        tables = {tablekey:table for tablekey, table in self.runpipeline(tablekeys, *args, **kwargs)}
-#        arraytable = self.function(*[tables[tablekey] for tablekey in tablekeys], *args, **items, **kwargs)
-#        return arraytable
-#    
-#    def runpipeline(self, tablekeys, *args, **kwargs):
-#        assert isinstance(tablekeys, tuple)
-#        for tablekey in tablekeys: yield tablekey, self.pipeline(tablekey, *args, **kwargs)
+class Pipeline(ABC):
+    def __init__(self, function, **kwargs): 
+        assert all([isinstance(values, dict) for values in kwargs.values()])
+        self.__tables = {key:_filterna(_aslist(values.get('tables', None))) for key, values in kwargs.items()}
+        self.__parms = {key:values['parms'] for key, values in kwargs.items()}
+        self.__function = function
         
+    @property
+    def function(self): return self.__function
+    @property
+    def tables(self): return self.__tables
+    @property
+    def parms(self): return self.__parms
     
+    def __call__(self, tablekey, *args, **kwargs):
+        table = self.execute(tablekey, *args, **kwargs)
+        return {tablekey:table}
+    
+    @abstractmethod
+    def execute(self, tablekey, *args, **kwargs): pass
+
+
+class Feed(Pipeline):
+    def __init__(self, webapi, function, **kwargs):
+        self.webapi = webapi
+        super().__init__(function, **kwargs)
+ 
+    def setwebapi(self, *args, universe, index, header, scope, **kwargs):
+        assert isinstance(scope, dict)
+        self.webapi.reset()
+        self.webapi.setuniverse(universe)
+        self.webapi.setindex(index)
+        self.webapi.setheader(header)
+        self.webapi.setitems(**scope)
         
+    def execute(self, tablekey, *args, **kwargs): 
+        parms = self.parms[tablekey]
+        self.setwebapi(**parms)
+        dataframe = self.webapi(*args, **kwargs)
+        table = self.function(dataframe, *args, **parms, name=tablekey, **kwargs)
+        return table
+
+
+class Transform(Pipeline):
+    def execute(self, tablekey, *args, tables, **kwargs):
+        parms = self.parms[tablekey]
+        requiredtables = [tables[required_tablekey] for required_tablekey in self.tables[tablekey]]        
+        table = self.function(*requiredtables, *args, **parms, name=tablekey, **kwargs)
+        return table
+
+
+class Calculation(dict):
+    def addfeed(self, mapping, webapi):
+        def decorator(function):
+            feed = Feed(webapi, function, **mapping)
+            ###
+            return feed
+        return decorator
+    
+    def addtransform(self, mapping):
+        def decorator(function):
+            transform = Transform(function, **mapping)
+            ###
+            return transform
+        return decorator
 
 
 
