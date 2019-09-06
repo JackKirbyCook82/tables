@@ -6,90 +6,93 @@ Created on Mon Jul 15 2019
 
 """
 
-from abc import ABC, abstractmethod
+from functools import update_wrapper
+import json
+
+from utilities.tree import Node, TreeRenderer
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
-__all__ = ['Feed', 'Transform', 'Calculation']
+__all__ = ['tableprocessor', 'Pipeline', 'Calculation']
 __copyright__ = "Copyright 2018, Jack Kirby Cook"
 __license__ = ""
 
 
 _aslist = lambda items: [items] if not isinstance(items, (list, tuple)) else list(items)   
-_filterna = lambda items: [item for item in items if item]
 
 
-class Pipeline(ABC):
-    def __init__(self, function, **kwargs): 
-        assert all([isinstance(values, dict) for values in kwargs.values()])
-        self.__tables = {key:_filterna(_aslist(values.get('tables', None))) for key, values in kwargs.items()}
-        self.__parms = {key:values['parms'] for key, values in kwargs.items()}
-        self.__function = function
+def tableprocessor(**tables):
+    def decorator(function):
+        parms_mapping = {key:values['parms'] for key, values in tables.items()}
+        table_mapping = {key:_aslist(values.get('tables', [])) for key, values in tables.items()}
         
+        def wrapper(tablekey, *args, tables={}, **kwargs):
+            assert isinstance(tables, dict)
+            tables = [tables[input_tablekey] for input_tablekey in table_mapping[tablekey]]
+            parms = parms_mapping[tablekey]
+            return function(*tables, *args, **parms, name=tablekey, **kwargs)        
+        
+        wrapper.registry = table_mapping
+        wrapper.parms = parms_mapping
+        update_wrapper(wrapper, function)
+        return wrapper    
+    return decorator
+
+
+class Pipeline(Node):
+    nameformat = 'Pipeline: {name}'
+    tablesformat = 'Tables: ({fromtables}) ==> ({totable})'
+    parmsformat = 'Parms: ({})'
+    
+    def __init__(self, key, function):
+        self.__function = function
+        super().__init__(key)
+    
     @property
     def function(self): return self.__function
     @property
-    def tables(self): return self.__tables
+    def parms(self): return self.function.parms[self.key]
     @property
-    def parms(self): return self.__parms
+    def tables(self): return self.function.registry[self.key]    
     
-    def __call__(self, tablekey, *args, **kwargs):
-        table = self.execute(tablekey, *args, **kwargs)
-        return {tablekey:table}
+    @property
+    def namestr(self): return self.nameformat.format(name=super().__str__())
+    @property
+    def tablestr(self): return self.tablesformat.format(fromtables=', '.join(self.tables), totable=self.key)
+    @property
+    def parmstr(self): return self.parmsformat.format(', '.join(['='.join([key, str(value)]) for key, value in self.parms.items()]))
+    def __str__(self):  return '\n'.join([self.namestr, self.tablestr, self.parmstr])
     
-    @abstractmethod
-    def execute(self, tablekey, *args, **kwargs): pass
-
-
-class Feed(Pipeline):
-    def __init__(self, webapi, function, **kwargs):
-        self.webapi = webapi
-        super().__init__(function, **kwargs)
- 
-    def setwebapi(self, *args, universe, index, header, scope, **kwargs):
-        assert isinstance(scope, dict)
-        self.webapi.reset()
-        self.webapi.setuniverse(universe)
-        self.webapi.setindex(index)
-        self.webapi.setheader(header)
-        self.webapi.setitems(**scope)
-        
-    def execute(self, tablekey, *args, **kwargs): 
-        parms = self.parms[tablekey]
-        self.setwebapi(**parms)
-        dataframe = self.webapi(*args, **kwargs)
-        table = self.function(dataframe, *args, **parms, name=tablekey, **kwargs)
-        return table
-
-
-class Transform(Pipeline):
-    def execute(self, tablekey, *args, tables, **kwargs):
-        parms = self.parms[tablekey]
-        requiredtables = [tables[required_tablekey] for required_tablekey in self.tables[tablekey]]        
-        table = self.function(*requiredtables, *args, **parms, name=tablekey, **kwargs)
-        return table
+    def __call__(self, tables, *args, **kwargs): 
+        assert isinstance(tables, dict)
+        return {self.key:self.function(self.key, *args, tables=tables, **kwargs)}
 
 
 class Calculation(dict):
-    def addfeed(self, mapping, webapi):
-        def decorator(function):
-            feed = Feed(webapi, function, **mapping)
-            ###
-            return feed
-        return decorator
+    def __init__(self, renderstyle): 
+        self.__treerenderer = TreeRenderer(**renderstyle)
     
-    def addtransform(self, mapping):
-        def decorator(function):
-            transform = Transform(function, **mapping)
-            ###
-            return transform
-        return decorator
-
-
-
-
+    def register(self, function):
+        for parentkey, childrenkeys in function.registry.items():
+            assert isinstance(childrenkeys, list)
+            parent = self.get(parentkey, Pipeline(parentkey, function))
+            children = [self.get(childkey, Pipeline(childkey, function)) for childkey in childrenkeys]
+            parent.addchildren(*children)
+            self.update({parentkey:parent})
+            self.update({childkey:child for childkey, child in zip(childrenkeys, children)})           
+        return function
     
+    def __call__(self, tablekey, *args, **kwargs):
+        tables = {}
+        for node in reversed(self[tablekey]): 
+            if node.key not in tables.keys(): 
+                tables.update(node(tables, *args, **kwargs))
+        return tables[tablekey]
     
+    def tree(self, tablekey): return self.__treerenderer(self[tablekey])
+    def __str__(self):
+        calcstring = json.dumps({key:[value.namestr, value.tablestr, value.parmstr] for key, value in self.items()}, sort_keys=True, indent=3, separators=(',', ' : '))
+        return 'Calculations {}'.format(calcstring)
 
 
 

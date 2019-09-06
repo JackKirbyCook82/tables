@@ -6,7 +6,7 @@ Created on Tues Aug 20 2019
 
 """
 
-from functools import update_wrapper, reduce
+from functools import update_wrapper
 
 from tables.alignment import align_arraytables, data_variables, axes_variables
 

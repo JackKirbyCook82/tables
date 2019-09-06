@@ -196,9 +196,6 @@ class ArrayTable(TableBase):
     @property
     def scope(self): return {key:self.dataset.coords[key].values for key in self.scopekeys}
     
-    #def vheader(self, axis): return [self.variables[axis].fromstr(value) for value in self.headers[axis]]
-    #def vscope(self, axis): return self.variables[axis].fromstr(str(self.scope[axis]))
-    
     def retag(self, **tags): 
         newdataset = self.dataset.rename(name_dict=tags)
         variables = self.variables
