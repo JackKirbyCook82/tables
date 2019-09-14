@@ -66,12 +66,12 @@ def arraytable_inversion(function):
 
 def arraytable_transform(function):
     @retag
-    def wrapper(self, table, *args, **kwargs):
+    def wrapper(self, table, *args, axis, **kwargs):
         TableClass = table.__class__
         VariablesClass = table.variables.__class__        
         
         dataset, variables = table.dataset, table.variables.copy()
-        newdataset, newvariables = function(self, dataset, *args, variables=variables, **kwargs)
+        newdataset, newvariables = function(self, dataset, *args, axis=axis, variables=variables, **kwargs)
         variables.update(newvariables)
         
         return TableClass(data=newdataset, variables=VariablesClass(variables), name=kwargs.get('name', table.name))

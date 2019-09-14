@@ -148,7 +148,7 @@ class FlatTable(TableBase):
         return dataframe[column].squeeze()    
     
     def unflatten(self, *datakeys, **kwargs):
-        dataframe = self.dataframe.copy()
+        dataframe = self.dataframe.copy(deep=True)
         for datakey in datakeys:
             try: dataframe.loc[:, datakey] = dataframe[datakey].apply(lambda x: self.variables[datakey].fromstr(x).value)
             except: pass        
@@ -249,7 +249,7 @@ class ArrayTable(TableBase):
 
     def transpose(self, *axes):
         assert all([key in self.axeskeys for key in axes])
-        order = axes + tuple([key for key in self.axes if key not in axes])
+        order = axes + tuple([key for key in self.dimkeys if key not in axes])
         newdataset = self.dataset.transpose(*order)
         newdataset.attrs = self.dataset.attrs
         return self.__class__(data=newdataset, variables=self.variables.copy(), name=self.name)
@@ -288,7 +288,7 @@ class ArrayTable(TableBase):
         newdataset = self.dataset * factor
         newdataset.attrs = self.dataset.attrs
         newvariables = self.variables.copy()
-        newvariables.update({datakey:newvariables[datakey].factor(factor, *args, how='multiply', **kwargs) for datakey in _aslist(self.datakeys)})
+        newvariables.update({datakey:newvariables[datakey].factor(*args, how='multiply', factor=factor, **kwargs) for datakey in _aslist(self.datakeys)})
         return self.__class__(data=newdataset, variables=newvariables, name=self.name)    
         
     def divide(self, factor, *args, **kwargs):
@@ -297,7 +297,7 @@ class ArrayTable(TableBase):
         newdataset = self.dataset / factor
         newdataset.attrs = self.dataset.attrs
         newvariables = self.variables.copy()        
-        newvariables.update({datakey:newvariables[datakey].factor(factor, *args, how='divide', **kwargs) for datakey in _aslist(self.datakeys)})
+        newvariables.update({datakey:newvariables[datakey].factor(*args, how='divide', factor=factor, **kwargs) for datakey in _aslist(self.datakeys)})
         return self.__class__(data=newdataset, variables=newvariables, name=self.name)    
 
     def flatten(self): 
