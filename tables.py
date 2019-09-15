@@ -35,7 +35,7 @@ class TableBase(ABC):
         cls.View = View
         return cls
     
-    def __init__(self, *args, data, name, variables, **kwargs): 
+    def __init__(self, data, *args, name, variables, **kwargs): 
         self.__data = data
         self.__name = name
         self.__variables = variables.__class__(**{key:value for key, value in variables.items() if key in self.keys})
@@ -73,13 +73,13 @@ class TableBase(ABC):
     
 
 class FlatTable(TableBase):
-    def __init__(self, *args, data, variables, **kwargs):
+    def __init__(self, data, *args, variables, **kwargs):
         try: dataframe = data.to_frame()
         except: dataframe = data
         for column in dataframe.columns: 
             try: dataframe[column] = dataframe[column].apply(lambda x: str(variables[column](x)))
             except: pass      
-        super().__init__(*args, data=dataframe, variables=variables, **kwargs)
+        super().__init__(dataframe, *args, variables=variables, **kwargs)
        
     @property
     def dataframe(self): return self.data
@@ -107,10 +107,11 @@ class FlatTable(TableBase):
         axes = _aslist(items.pop('axes'))
         if len(axes) == 1: newitems = self.createdata(column, fromcolumns='single',  axis=axes[0], **items)
         elif len(axes) > 1: newitems = self.createdata(column ,fromcolumns='multiple', axes=axes, **items)
-        else: raise ValueError(axes)    
-        self = self.__class__(**newitems)  
+        else: raise ValueError(axes)  
+        data = newitems.pop('data')
+        self = self.__class__(data, **newitems)  
 
-    def select(self, *columns): return self.__class__(data=self.dataframe[_aslist(columns)], variables=self.variables, name=self.name)
+    def select(self, *columns): return self.__class__(self.dataframe[_aslist(columns)], variables=self.variables, name=self.name)
     def drop(self, *columns): return self.select(*[column for column in self.dataframe.columns if column not in columns])
     
     @keydispatcher('fromcolumns')
@@ -153,13 +154,13 @@ class FlatTable(TableBase):
             try: dataframe.loc[:, datakey] = dataframe[datakey].apply(lambda x: self.variables[datakey].fromstr(x).value)
             except: pass        
         xarray = xarray_fromdataframe(dataframe, datakeys=datakeys, forcedataset=True, **kwargs)
-        return ArrayTable(data=xarray, variables=self.variables.copy(), name=self.name)
+        return ArrayTable(xarray, variables=self.variables.copy(), name=self.name)
 
 
 class ArrayTable(TableBase):
-    def __init__(self, *args, data, variables, **kwargs):
+    def __init__(self, data, *args, variables, **kwargs):
         assert isinstance(data, (xr.Dataset))
-        super().__init__(*args, data=data, variables=variables, **kwargs)  
+        super().__init__(data, *args, variables=variables, **kwargs)  
 
     @property
     def dataset(self): return self.data  
@@ -200,7 +201,7 @@ class ArrayTable(TableBase):
         newdataset = self.dataset.rename(name_dict=tags)
         variables = self.variables
         for oldkey, newkey in tags.items(): variables[newkey] = variables.pop(oldkey)
-        return self.__class__(data=newdataset, variables=variables, name=self.name)
+        return self.__class__(newdataset, variables=variables, name=self.name)
 
     def __getitem__(self, items): 
         if isinstance(items, int): return self[self.datakeys[items]]
@@ -219,7 +220,7 @@ class ArrayTable(TableBase):
             newdataset = newdataset.loc[keyitems]                  
         else: raise TypeError(type(items))        
         newdataset.attrs = self.dataset.attrs
-        table = self.__class__(data=newdataset, variables=self.variables.copy(), name=self.name)
+        table = self.__class__(newdataset, variables=self.variables.copy(), name=self.name)
         return table.dropallna()
 
     def sort(self, axis, ascending=True):
@@ -229,7 +230,7 @@ class ArrayTable(TableBase):
         newdataset = newdataset.sortby(axis, ascending=ascending)
         newdataset.coords[axis] = pd.Index([str(item) for item in newdataset.coords[axis].values], name=axis)
         newdataset.attrs = self.dataset.attrs
-        return self.__class__(data=newdataset, variables=self.variables.copy(), name=self.name)
+        return self.__class__(newdataset, variables=self.variables.copy(), name=self.name)
     
     def sortall(self, ascending=True):
         table = self
@@ -240,7 +241,7 @@ class ArrayTable(TableBase):
         assert axis in self.dimkeys
         newdataset = self.dataset.copy()
         newdataset = newdataset.dropna(axis, how='all')
-        return self.__class__(data=newdataset, variables=self.variables.copy(), name=self.name)
+        return self.__class__(newdataset, variables=self.variables.copy(), name=self.name)
 
     def dropallna(self):
         table = self
@@ -252,13 +253,13 @@ class ArrayTable(TableBase):
         order = axes + tuple([key for key in self.dimkeys if key not in axes])
         newdataset = self.dataset.transpose(*order)
         newdataset.attrs = self.dataset.attrs
-        return self.__class__(data=newdataset, variables=self.variables.copy(), name=self.name)
+        return self.__class__(newdataset, variables=self.variables.copy(), name=self.name)
 
     def expand(self, axis):
         assert axis in self.scopekeys
         newdataset = self.dataset.expand_dims(axis)        
         newdataset.attrs = self.dataset.attrs
-        return self.__class__(data=newdataset, variables=self.variables.copy(), name=self.name)
+        return self.__class__(newdataset, variables=self.variables.copy(), name=self.name)
     
     def squeeze(self, *axes):
         assert all([len(self.dataset.coords[axis]) == 1 for axis in axes])
@@ -268,7 +269,7 @@ class ArrayTable(TableBase):
             elif axis in self.headerkeys: newdataset = newdataset.squeeze(dim=axis, drop=False)
             else: raise ValueError(axis)
         newdataset.attrs = self.dataset.attrs
-        return self.__class__(data=newdataset, variables=self.variables.copy(), name=self.name)
+        return self.__class__(newdataset, variables=self.variables.copy(), name=self.name)
 
     def removescope(self, *axes):
         assert all([axis in self.scopekeys for axis in axes])
@@ -277,7 +278,7 @@ class ArrayTable(TableBase):
             newdataset = newdataset.drop(axis)
             newvariables.pop(axis)
         newdataset.attrs = self.dataset.attrs        
-        return self.__class__(data=newdataset, variables=newvariables, name=self.name)
+        return self.__class__(newdataset, variables=newvariables, name=self.name)
 
     def __mul__(self, factor): return self.multiply(factor)
     def __truediv__(self, factor): return self.divide(factor)
@@ -289,7 +290,7 @@ class ArrayTable(TableBase):
         newdataset.attrs = self.dataset.attrs
         newvariables = self.variables.copy()
         newvariables.update({datakey:newvariables[datakey].factor(*args, how='multiply', factor=factor, **kwargs) for datakey in _aslist(self.datakeys)})
-        return self.__class__(data=newdataset, variables=newvariables, name=self.name)    
+        return self.__class__(newdataset, variables=newvariables, name=self.name)    
         
     def divide(self, factor, *args, **kwargs):
         assert isinstance(factor, Number)
@@ -298,13 +299,13 @@ class ArrayTable(TableBase):
         newdataset.attrs = self.dataset.attrs
         newvariables = self.variables.copy()        
         newvariables.update({datakey:newvariables[datakey].factor(*args, how='divide', factor=factor, **kwargs) for datakey in _aslist(self.datakeys)})
-        return self.__class__(data=newdataset, variables=newvariables, name=self.name)    
+        return self.__class__(newdataset, variables=newvariables, name=self.name)    
 
     def flatten(self): 
         dataset = self.dataset.copy()
         dataframe = dataframe_fromxarray(dataset) 
         for datakey in self.datakeys: dataframe[datakey] = dataframe[datakey].apply(lambda x: str(self.variables[datakey](x)))
-        return FlatTable(data=dataframe, variables=self.variables.copy(), name=self.name)     
+        return FlatTable(dataframe, variables=self.variables.copy(), name=self.name)     
 
 
 
