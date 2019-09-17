@@ -31,7 +31,7 @@ def tableprocessor(**tables):
             tables = [tables[input_tablekey] for input_tablekey in table_mapping[tablekey]]
             parms = parms_mapping[tablekey]
             return function(*tables, *args, **parms, name=tablekey, **kwargs)        
-        
+
         wrapper.registry = table_mapping
         wrapper.parms = parms_mapping
         update_wrapper(wrapper, function)

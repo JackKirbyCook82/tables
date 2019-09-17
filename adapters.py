@@ -36,13 +36,12 @@ def flattable_transform(function):
     @retag
     def wrapper(self, table, *args, **kwargs):
         TableClass = table.__class__
-        VariablesClass = table.variables.__class__
            
         dataframe, variables = table.dataframe, table.variables.copy()
         newdataframe, newvariables = function(self, dataframe, variables=variables, *args, **kwargs)
-        variables.update(newvariables)        
+        variables.update(**newvariables)        
         
-        return TableClass(data=newdataframe, variables=VariablesClass(variables), name=kwargs.get('name', table.name))    
+        return TableClass(data=newdataframe, variables=variables, name=kwargs.get('name', table.name))    
     update_wrapper(wrapper, function)
     return wrapper
 
@@ -51,15 +50,14 @@ def arraytable_inversion(function):
     @retag
     def wrapper(self, table, *args, **kwargs):
         assert table.layers == 1
-        TableClass = table.__class__
-        VariablesClass = table.variables.__class__        
+        TableClass = table.__class__      
                 
         dataarray, variables = list(table.dataarrays.values())[0], table.variables.copy()
         newdataarray, newvariables = function(self, dataarray, *args, variables=variables, **kwargs)
         newdataset = newdataarray.to_dataset()
-        variables.update(newvariables)
+        variables.update(**newvariables)
         
-        return TableClass(data=newdataset, variables=VariablesClass(variables), name=kwargs.get('name', table.name))
+        return TableClass(data=newdataset, variables=variables, name=kwargs.get('name', table.name))
     update_wrapper(wrapper, function)
     return wrapper
 
@@ -67,14 +65,13 @@ def arraytable_inversion(function):
 def arraytable_transform(function):
     @retag
     def wrapper(self, table, *args, axis, **kwargs):
-        TableClass = table.__class__
-        VariablesClass = table.variables.__class__        
+        TableClass = table.__class__     
         
         dataset, variables = table.dataset, table.variables.copy()
         newdataset, newvariables = function(self, dataset, *args, axis=axis, variables=variables, **kwargs)
-        variables.update(newvariables)
+        variables.update(**newvariables)
         
-        return TableClass(data=newdataset, variables=VariablesClass(variables), name=kwargs.get('name', table.name))
+        return TableClass(data=newdataset, variables=variables, name=kwargs.get('name', table.name))
     update_wrapper(wrapper, function)
     return wrapper
 
@@ -84,7 +81,6 @@ def arraytable_operation(function):
         assert isinstance(other, type(table))
         assert table.layers == other.layers == 1
         TableClass = table.__class__
-        VariablesClass = table.variables.__class__    
         
         datakey, otherdatakey = table.datakeys[0], other.datakeys[0]
         axes = [item for item in [*_aslist(kwargs.get('axis', None)), *_aslist(axes)] if item is not None]
@@ -100,10 +96,10 @@ def arraytable_operation(function):
 
         dataarray, otherdataarray = table.dataarrays[datakey], other.dataarrays[otherdatakey]
         newdataarray, newvariables = function(dataarray, otherdataarray, *args, variables=datavariables, **kwargs)  
-        variables.update(newvariables)        
+        variables.update(**newvariables)        
         newdataset = newdataarray.to_dataset()        
         
-        return TableClass(data=newdataset, variables=VariablesClass(variables), name=kwargs.get('name', table.name))
+        return TableClass(data=newdataset, variables=variables, name=kwargs.get('name', table.name))
     update_wrapper(wrapper, function)
     return wrapper
 

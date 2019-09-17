@@ -19,12 +19,14 @@ from tables.adapters import flattable_transform, arraytable_inversion, arraytabl
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
-__all__ = ['Scale', 'Reduction', 'WeightedAverage', 'Cumulate', 'Uncumulate', 'MovingAverage', 'Consolidate', 'Unconsolidate', 'Bound', 'Interpolate', 'Inversion', 'Group']
+__all__ = ['Scale', 'Reduction', 'Combine', 'WeightedAverage', 'Cumulate', 'Uncumulate', 'MovingAverage', 'Consolidate', 'Unconsolidate', 'Bound', 'Interpolate', 'Inversion', 'Group']
 __copyright__ = "Copyright 2018, Jack Kirby Cook"
 __license__ = ""
 
 
 _aslist = lambda items: [items] if not isinstance(items, (list, tuple)) else list(items)
+_union = lambda x, y: list(set(x) | set(y))
+_intersection = lambda x, y: list(set(x) & set(y))
 
 headerkeys = lambda dataarray: tuple(dataarray.dims)
 scopekeys = lambda dataarray: tuple(set(dataarray.coords.keys()) - set(dataarray.dims))
@@ -67,14 +69,14 @@ class Transformation(ABC):
     def axisvariable(self, variable, *args, axis, **kwargs): return variable
     
     @classmethod
-    def register(cls, required=(), xarray_funcs={}, varray_funcs={}, **defaults):  
+    def register(cls, required=(), defaults={}, xarray_funcs={}, varray_funcs={}, **kwargs):  
         assert isinstance(required, tuple)
         assert all([isinstance(funcs, dict) for funcs in (xarray_funcs, varray_funcs)])
         
         def wrapper(subclass):                                    
             name = subclass.__name__
             bases = (subclass, cls)
-            attrs = dict(defaults=defaults, required=required, xarray_funcs=xarray_funcs, varray_funcs=varray_funcs)           
+            attrs = dict(defaults=defaults, required=required, xarray_funcs=xarray_funcs, varray_funcs=varray_funcs, **kwargs)           
             return type(name, bases, attrs)
         return wrapper  
     
@@ -101,8 +103,30 @@ class Reduction:
      
     def datavariable(self, variable, *args, datakey, axis, how, **kwargs): return variable.transformation(*args, method='reduction', how=how, **kwargs)   
 
-    
-@Transformation.register(xarray_funcs={'wtaverage':xar.weightaverage}, varray_funcs={'summation':var.summation})
+
+@Transformation.register(required=('how', 'ascending', 'agg'), defaults={'ascending':True}, joining={'contained': lambda x, y: x.contains(y) or y.contains(x), 'overlap': lambda x, y: x.overlaps(y)},
+                         xarray_funcs={'combine':xar.combine}, varray_funcs={'contained':var.combine_contained, 'overlap':var.combine_overlap})
+class Combine: 
+    def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, **kwargs):
+        generator = lambda x, y: [(yield (str(i), str(j))) for i in x for j in y if self.joining[how](i, j)]
+        
+        varray = getheader(dataarray, axis, axisvariable)
+        newvarray = self.varray_funcs[how](varray, *args, **kwargs)  
+        newheader = [str(item) for item in newvarray]
+        
+        resid = [item for item in varray if item not in newvarray]           
+        joins = [items for items in generator(newvarray, resid)]
+        
+        naming = {items:_intersection(items, newheader) for items in joins}
+        assert all([len(values) == 1 for values in naming.values()])
+        naming = {key:values[0] for key, values in naming.items()}
+        
+        xarray = self.xarray_funcs['combine'](dataarray, *args, axis=axis, values=joins, naming=naming, **kwargs)
+        xarray.name = dataarray.name
+        return xarray
+
+
+@Transformation.register(xarray_funcs={'wtaverage':xar.weight_average}, varray_funcs={'summation':var.summation})
 class WeightedAverage:
     def execute(self, dataarray, *args, axis, datavariable, axisvariable, **kwargs):
         varray = getheader(dataarray, axis, axisvariable)
@@ -138,7 +162,7 @@ class Uncumulate:
         return xarray
         
     
-@Transformation.register(required=('how', 'period'), xarray_funcs={'average':xar.movingaverage}, varray_funcs={'average':var.movingaverage, 'total':var.movingtotal, 'bracket':var.movingbracket, 'differential':var.movingdifferential})
+@Transformation.register(required=('how', 'period'), xarray_funcs={'average':xar.moving_average}, varray_funcs={'average':var.moving_average, 'total':var.moving_total, 'bracket':var.moving_bracket, 'differential':var.moving_differential})
 class MovingAverage:
     def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, period, **kwargs):
         varray = getheader(dataarray, axis, axisvariable)

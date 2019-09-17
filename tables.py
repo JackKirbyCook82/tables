@@ -36,10 +36,9 @@ class TableBase(ABC):
         return cls
     
     def __init__(self, data, *args, name, variables, **kwargs): 
-        self.__data = data
-        self.__name = name
-        self.__variables = variables.__class__(**{key:value for key, value in variables.items() if key in self.keys})
-        
+        self.__data, self.__name = data, name
+        self.__variables = variables.select(*self.keys)
+     
     @property
     def name(self): return self.__name       
     @property
