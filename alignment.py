@@ -44,15 +44,14 @@ def align_arraytables(table, other, *args, method, noncoreaxes=[], **kwargs):
 def _align_variables(function):
     def wrapper(variables, others, *args, noncoreaxes=[], **kwargs):
         assert isinstance(others, type(variables))
-        VariablesClass = variables.__class__
-            
+        VariablesClass, OthersClass = variables.__class__, others.__class__
         variables, others = variables.copy(), others.copy()
         noncorevariables = {key:variables.pop(key) for key in _aslist(noncoreaxes) if key in variables.keys()}    
-        noncoreothers = {key:others.pop(key) for key in _aslist(noncoreaxes) if key in others.keys()}          
-        variables, other = function(variables, others, *args, **kwargs)
-        variables.update(noncorevariables)
-        others.update(noncoreothers)
-        return VariablesClass(variables), VariablesClass(others)
+        noncoreothers = {key:others.pop(key) for key in _aslist(noncoreaxes) if key in others.keys()}                  
+        newvariables, newothers = function(variables, others, *args, **kwargs)
+        newvariables.update(noncorevariables)
+        newothers.update(noncoreothers)
+        return VariablesClass(newvariables, name=variables.name), OthersClass(newothers, name=others.name)
     update_wrapper(wrapper, function)
     return wrapper
 
@@ -101,24 +100,26 @@ def align_variables_exact(variables, others, *args, **kwargs):
 
 def axes_variables(table, other, *args, **kwargs):
     VariablesClass = table.variables.__class__
+    name = table.variables.name
     variables = {key:value for key, value in table.variables.items() if key not in table.datakeys}
     othervariables = {key:value for key, value in other.variables.items() if key not in other.datakeys}
      
     for key in set([*variables.keys(), *othervariables.keys()]): 
         if all([key in variables.keys(), key in othervariables.keys()]): assert variables[key] == othervariables[key]                
     variables.update(othervariables)
-    return VariablesClass(variables)
+    return VariablesClass(variables, name=name)
 
 
 def data_variables(table, other, *args, **kwargs):
     VariablesClass = table.variables.__class__
+    name = table.variables.name
     variables = {key:value for key, value in table.variables.items() if key in table.datakeys}
     othervariables = {key:value for key, value in other.variables.items() if key in other.datakeys}
      
     for key in set([*variables.keys(), *othervariables.keys()]): 
         if all([key in variables.keys(), key in othervariables.keys()]): assert variables[key] == othervariables[key]                
     variables.update(othervariables)
-    return VariablesClass(variables)    
+    return VariablesClass(variables, name=name)    
 
 
 

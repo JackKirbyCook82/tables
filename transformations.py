@@ -19,7 +19,7 @@ from tables.adapters import flattable_transform, arraytable_inversion, arraytabl
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
-__all__ = ['Scale', 'Reduction', 'Combine', 'WeightedAverage', 'Cumulate', 'Uncumulate', 'MovingAverage', 'Consolidate', 'Unconsolidate', 'Bound', 'Interpolate', 'Inversion', 'Group']
+__all__ = ['Scale', 'Reduction', 'Combine', 'WeightReduction', 'Cumulate', 'Uncumulate', 'MovingAverage', 'Consolidate', 'Unconsolidate', 'Bound', 'Interpolate', 'Inversion', 'Group']
 __copyright__ = "Copyright 2018, Jack Kirby Cook"
 __license__ = ""
 
@@ -43,7 +43,7 @@ class Transformation(ABC):
         self.hyperparms = {key:value for key, value in self.defaults.items()}
         self.hyperparms.update(hyperparms)  
         assert all([key in self.hyperparms.keys() for key in self.required])      
-        print('Created: {}\n'.format(str(self)))
+        print('Created Transformation: {}\n'.format(str(self)))
     def __repr__(self): return '{}(hyperparms={})'.format(self.__class__.__name__, self.transformtype, self.extract, self.hyperparms)
     def __str__(self): return '{}({})'.format(self.__class__.__name__, ', '.join(['='.join([key, str(value)]) for key, value in self.hyperparms.items()]))
 
@@ -91,7 +91,7 @@ class Scale:
     def datavariable(self, variable, *args, datakey, axis, how, **kwargs): return variable.scale(*args, how=how, axis=axis, **kwargs)
     
 
-@Transformation.register(required=('how',), xarray_funcs={'summation':xar.summation, 'mean':xar.mean, 'stdev':xar.stdev, 'minimum':xar.minimum, 'maximum':xar.maximum}, varray_funcs={'summation':var.summation})
+@Transformation.register(required=('how',), xarray_funcs={'summation':xar.summation, 'average':xar.average, 'stdev':xar.stdev, 'minimum':xar.minimum, 'maximum':xar.maximum}, varray_funcs={'summation':var.summation})
 class Reduction: 
     def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, **kwargs):
         varray = getheader(dataarray, axis, axisvariable)
@@ -126,18 +126,18 @@ class Combine:
         return xarray
 
 
-@Transformation.register(xarray_funcs={'wtaverage':xar.weight_average}, varray_funcs={'summation':var.summation})
-class WeightedAverage:
-    def execute(self, dataarray, *args, axis, datavariable, axisvariable, **kwargs):
+@Transformation.register(xarray_funcs={'average':xar.wtaverage, 'stdev':xar.wtstdev}, varray_funcs={'summation':var.summation})
+class WeightReduction:
+    def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, **kwargs):
         varray = getheader(dataarray, axis, axisvariable)
         values = [item.value for item in varray]
-        xarray = self.xarray_funcs['wtaverage'](dataarray, *args, axis=axis, weights=values, **kwargs)
-        varray = self.varray_funcs['summation'](varray, *args, **kwargs)
-        xarray = setheader(xarray, axis, varray)
+        xarray = self.xarray_funcs[how](dataarray, *args, axis=axis, weights=values, **kwargs)
+        varray = self.varray_funcs['summation'](varray, *args,  **kwargs)
+        xarray = xarray.assign_coords(**{axis:str(varray)}).expand_dims(axis) 
         xarray.name = dataarray.name
         return xarray
      
-    def datavariable(self, variable, *args, datakey, axis, how, **kwargs): return variable.transformation(*args, method='reduction', how='wtaverage', **kwargs)   
+    def datavariable(self, variable, *args, datakey, axis, how, **kwargs): return variable.transformation(*args, method='reduction', how=how, axis=axis, **kwargs)   
     
     
 @Transformation.register(required=('direction',), xarray_funcs={'cumulate':xar.cumulate}, varray_funcs={'cumulate':var.cumulate})
@@ -233,7 +233,7 @@ class Inversion(object):
         self.hyperparms = {key:value for key, value in self.defaults.items()}
         self.hyperparms.update(hyperparms)  
         assert all([key in self.hyperparms.keys() for key in self.required])   
-        print('Created: {}\n'.format(str(self)))
+        print('Created Transformation: {}\n'.format(str(self)))
     def __repr__(self): return '{}(hyperparms={})'.format(self.__class__.__name__, self.transformtype, self.extract, self.hyperparms)
     def __str__(self): return '{}({})'.format(self.__class__.__name__, ', '.join(['='.join([key, str(value)]) for key, value in self.hyperparms.items()]))
 
@@ -275,7 +275,7 @@ class Group(object):
         self.hyperparms = {key:value for key, value in self.defaults.items()}
         self.hyperparms.update(hyperparms)  
         assert all([key in self.hyperparms.keys() for key in self.required]) 
-        print('Created: {}\n'.format(str(self)))       
+        print('Created Transformation: {}\n'.format(str(self)))     
     def __repr__(self): return '{}(transformtype={}, hyperparms={})'.format(self.__class__.__name__, self.transformtype, self.hyperparms)   
     def __str__(self): return '{}({})'.format(self.__class__.__name__, ', '.join(['='.join([key, str(value)]) for key, value in self.hyperparms.items()]))
 

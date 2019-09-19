@@ -20,7 +20,7 @@ __copyright__ = "Copyright 2018, Jack Kirby Cook"
 __license__ = ""
 
 
-_NAMEFORMAT = '{clsname}: {name}'
+_NAMEFORMAT = '{clsname}: "{name}"'
 _ARRAYFORMAT = 'DATA[{index}] = {key}: {axes}\n{values}'
 _HEADERFORMAT = '{key}:\n{values}'
 _SCOPEFORMAT = '{key}: {values}'    
@@ -33,7 +33,7 @@ _flatten = lambda nesteditems: [item for items in nesteditems for item in items]
 _headerkeys = lambda dataarray: tuple(dataarray.dims)
 _scopekeys = lambda dataarray: tuple(set(dataarray.coords.keys()) - set(dataarray.dims))
 
-_namestring = lambda clsname, name: _NAMEFORMAT.format(clsname=clsname.upper(), name=uppercase(name, withops=True))
+_namestring = lambda clsname, name: _NAMEFORMAT.format(clsname=uppercase(clsname), name=name)
 _structurestring = lambda structure: str(structure)
 _arraystring = lambda dataindex, datakey, dataaxes, datavalues: _ARRAYFORMAT.format(index=dataindex, key=uppercase(datakey, withops=True), axes=tuple([uppercase(axis, withops=True) for axis in dataaxes]), values=datavalues)
 _dataframestring = lambda dataframe: _DATAFRAMEFORMAT.format(values=dataframe)

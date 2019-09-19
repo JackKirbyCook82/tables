@@ -39,7 +39,7 @@ def flattable_transform(function):
            
         dataframe, variables = table.dataframe, table.variables.copy()
         newdataframe, newvariables = function(self, dataframe, variables=variables, *args, **kwargs)
-        variables.update(**newvariables)        
+        variables = variables.update([(key, value) for key, value in newvariables.items()])        
         
         return TableClass(data=newdataframe, variables=variables, name=kwargs.get('name', table.name))    
     update_wrapper(wrapper, function)
@@ -55,7 +55,7 @@ def arraytable_inversion(function):
         dataarray, variables = list(table.dataarrays.values())[0], table.variables.copy()
         newdataarray, newvariables = function(self, dataarray, *args, variables=variables, **kwargs)
         newdataset = newdataarray.to_dataset()
-        variables.update(**newvariables)
+        variables = variables.update([(key, value) for key, value in newvariables.items()])   
         
         return TableClass(data=newdataset, variables=variables, name=kwargs.get('name', table.name))
     update_wrapper(wrapper, function)
@@ -69,7 +69,7 @@ def arraytable_transform(function):
         
         dataset, variables = table.dataset, table.variables.copy()
         newdataset, newvariables = function(self, dataset, *args, axis=axis, variables=variables, **kwargs)
-        variables.update(**newvariables)
+        variables = variables.update([(key, value) for key, value in newvariables.items()])   
         
         return TableClass(data=newdataset, variables=variables, name=kwargs.get('name', table.name))
     update_wrapper(wrapper, function)
@@ -96,7 +96,7 @@ def arraytable_operation(function):
 
         dataarray, otherdataarray = table.dataarrays[datakey], other.dataarrays[otherdatakey]
         newdataarray, newvariables = function(dataarray, otherdataarray, *args, variables=datavariables, **kwargs)  
-        variables.update(**newvariables)        
+        variables = variables.update([(key, value) for key, value in newvariables.items()])       
         newdataset = newdataarray.to_dataset()        
         
         return TableClass(data=newdataset, variables=variables, name=kwargs.get('name', table.name))
@@ -110,14 +110,16 @@ def arraytable_combination(function):
         if not others: return table
         assert all([isinstance(other, type(table)) for other in others])        
         TableClass = tables[0].__class__
-        VariablesClass = tables[0].variables.__class__          
+        tablename = table.name
+        VariablesClass = tables[0].variables.__class__  
+        variablesname = tables[0].variables.name        
         
         axes = [item for item in [*_aslist(axis), *_aslist(axes)] if item is not None]
         newxarray, newvariables = function(table, others, *args, axes=axes, **kwargs)        
         try: newdataset = newxarray.to_dataset()
         except: newdataset = newxarray
     
-        return TableClass(data=newdataset, variables=VariablesClass(newvariables), name=kwargs.get('name', table.name))
+        return TableClass(data=newdataset, variables=VariablesClass(newvariables, name=variablesname), name=kwargs.get('name', tablename))
     update_wrapper(wrapper, function)
     return wrapper
 
@@ -168,8 +170,8 @@ def arraytable_layer(function):
         
         datavariables, axesvariables = {}, {}
         for other in others: 
-            datavariables.update(data_variables(table, other, *args, **kwargs))
-            axesvariables.update(axes_variables(table, other, *args, **kwargs))  
+            datavariables.update(**data_variables(table, other, *args, **kwargs))
+            axesvariables.update(**axes_variables(table, other, *args, **kwargs))  
         newvariables = {**datavariables, **axesvariables}
                 
         return newdataset, newvariables

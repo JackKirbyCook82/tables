@@ -24,7 +24,10 @@ __copyright__ = "Copyright 2018, Jack Kirby Cook"
 __license__ = ""
 
 
+_union = lambda x, y: list(set(x) | set(y))
+_intersection = lambda x, y: list(set(x) & set(y))
 _aslist = lambda items: [items] if not isinstance(items, (list, tuple)) else list(items)
+
 _tableview = lambda table: '\n\n'.join([uppercase(table.name, withops=True), str(table.data), str(table.variables)])
  
 
@@ -37,7 +40,7 @@ class TableBase(ABC):
     
     def __init__(self, data, *args, name, variables, **kwargs): 
         self.__data, self.__name = data, name
-        self.__variables = variables.select(*self.keys)
+        self.__variables = variables.select([key for key in self.keys if key in variables.keys()])
      
     @property
     def name(self): return self.__name       
@@ -198,7 +201,7 @@ class ArrayTable(TableBase):
     
     def retag(self, **tags): 
         newdataset = self.dataset.rename(name_dict=tags)
-        variables = self.variables
+        variables = self.variables.copy()
         for oldkey, newkey in tags.items(): variables[newkey] = variables.pop(oldkey)
         return self.__class__(newdataset, variables=variables, name=self.name)
 
@@ -287,17 +290,15 @@ class ArrayTable(TableBase):
         if factor == 1: return self
         newdataset = self.dataset * factor
         newdataset.attrs = self.dataset.attrs
-        newvariables = self.variables.copy()
-        newvariables.update({datakey:newvariables[datakey].factor(*args, how='multiply', factor=factor, **kwargs) for datakey in _aslist(self.datakeys)})
+        newvariables = self.variables.update([(datakey, self.variables[datakey].factor(*args, how='multiply', factor=factor, **kwargs)) for datakey in _aslist(self.datakeys)])
         return self.__class__(newdataset, variables=newvariables, name=self.name)    
         
     def divide(self, factor, *args, **kwargs):
         assert isinstance(factor, Number)
         if factor == 1: return self
         newdataset = self.dataset / factor
-        newdataset.attrs = self.dataset.attrs
-        newvariables = self.variables.copy()        
-        newvariables.update({datakey:newvariables[datakey].factor(*args, how='divide', factor=factor, **kwargs) for datakey in _aslist(self.datakeys)})
+        newdataset.attrs = self.dataset.attrs     
+        newvariables = self.variables.update([(datakey, self.variables[datakey].factor(*args, how='divide', factor=factor, **kwargs)) for datakey in _aslist(self.datakeys)])
         return self.__class__(newdataset, variables=newvariables, name=self.name)    
 
     def flatten(self): 

@@ -1,59 +1,72 @@
 # -*- coding: utf-8 -*-
 """
 Created on Mon Jul 15 2019
-@name    Processors Objects
+@name    Table Processors Objects
 @author: Jack Kriby Cook
 
 """
 
-from functools import update_wrapper
 import json
 
 from utilities.tree import Node, TreeRenderer
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
-__all__ = ['tableprocessor', 'Pipeline', 'Calculation']
+__all__ = ['Pipeline', 'CalculationNode', 'Calculation']
 __copyright__ = "Copyright 2018, Jack Kirby Cook"
 __license__ = ""
 
 
 _aslist = lambda items: [items] if not isinstance(items, (list, tuple)) else list(items)   
-
-
-def tableprocessor(**tables):
-    def decorator(function):
-        parms_mapping = {key:values['parms'] for key, values in tables.items()}
-        table_mapping = {key:_aslist(values.get('tables', [])) for key, values in tables.items()}
         
-        def wrapper(tablekey, *args, tables={}, **kwargs):
-            assert isinstance(tables, dict)
-            tables = [tables[input_tablekey] for input_tablekey in table_mapping[tablekey]]
-            parms = parms_mapping[tablekey]
-            return function(*tables, *args, **parms, name=tablekey, **kwargs)        
 
-        wrapper.registry = table_mapping
-        wrapper.parms = parms_mapping
-        update_wrapper(wrapper, function)
-        return wrapper    
-    return decorator
+class Pipeline(object):
+    def __init__(self, function, inputparms_mappings, inputtable_mappings):
+        assert all([isinstance(mappings, dict) for mappings in (inputparms_mappings, inputtable_mappings)])
+        assert inputparms_mappings.keys() == inputtable_mappings.keys()
+        self.__inputParms = inputparms_mappings
+        self.__inputTables = inputtable_mappings
+        self.__function = function
+
+    @property
+    def registry(self): return self.__inputTables
+    @property
+    def parms(self): return self.__inputParms
+
+    def __call__(self, tablekey, *args, tables={}, **kwargs):
+        assert isinstance(tables, dict)
+        inputTables = [tables[inputTable] for inputTable in self.__inputTables[tablekey]]
+        inputParms = self.__inputParms[tablekey]
+        return self.__function(*inputTables, *args, **inputParms, name=tablekey, **kwargs)
+    
+    def __getitem__(self, tablekey):
+        def wrapper(*args, tables={}, **kwargs): return self(tablekey, *args, tables=tables, **kwargs)
+        return wrapper 
+    
+    @classmethod
+    def create(cls, **mappings):
+        def decorator(function):
+            inputparms_mappings = {key:values['parms'] for key, values in mappings.items()}
+            inputtable_mappings = {key:_aslist(values.get('tables', [])) for key, values in mappings.items()}   
+            return cls(function, inputparms_mappings, inputtable_mappings)
+        return decorator 
 
 
-class Pipeline(Node):
+class CalculationNode(Node):
     nameformat = 'Pipeline: {name}'
     tablesformat = 'Tables: ({fromtables}) ==> ({totable})'
     parmsformat = 'Parms: ({})'
     
-    def __init__(self, key, function):
-        self.__function = function
+    def __init__(self, key, pipeline):
+        self.__pipeline = pipeline
         super().__init__(key)
     
     @property
-    def function(self): return self.__function
+    def pipeline(self): return self.__pipeline
     @property
-    def parms(self): return self.function.parms[self.key]
+    def parms(self): return self.pipeline.parms[self.key]
     @property
-    def tables(self): return self.function.registry[self.key]    
+    def tables(self): return self.pipeline.registry[self.key]    
     
     @property
     def namestr(self): return self.nameformat.format(name=super().__str__())
@@ -65,41 +78,42 @@ class Pipeline(Node):
     
     def __call__(self, tables, *args, **kwargs): 
         assert isinstance(tables, dict)
-        return {self.key:self.function(self.key, *args, tables=tables, **kwargs)}
+        return {self.key:self.pipeline[self.key](*args, tables=tables, **kwargs)}
+        
 
-
-class Calculation(dict):
-    def __init__(self, renderstyle): 
+class Calculation(object):
+    def __init__(self, name=None, **renderstyle): 
+        self.__nodes = {}
         self.__treerenderer = TreeRenderer(**renderstyle)
+        self.__name = name
     
-    def register(self, function):
-        for parentkey, childrenkeys in function.registry.items():
+    def showtree(self, tablekey): print(str(self.__treerenderer(self.__nodes[tablekey])), '\n')
+    
+    def __str__(self):
+        name = self.__class__.__name__ if not self.__name else '_'.join([self.__name, self.__class__.__name__])
+        jsonstr = json.dumps({key:[value.namestr, value.tablestr, value.parmstr] for key, value in self.__nodes.items()}, sort_keys=True, indent=3, separators=(',', ' : '))        
+        return ' '.join([name, jsonstr])  
+
+    def register(self, pipeline):
+        for parentkey, childrenkeys in pipeline.registry.items():
             assert isinstance(childrenkeys, list)
-            parent = self.get(parentkey, Pipeline(parentkey, function))
-            children = [self.get(childkey, Pipeline(childkey, function)) for childkey in childrenkeys]
+            parent = self.__nodes.get(parentkey, CalculationNode(parentkey, pipeline))
+            children = [self.__nodes.get(childkey, CalculationNode(childkey, pipeline)) for childkey in childrenkeys]
             parent.addchildren(*children)
-            self.update({parentkey:parent})
-            self.update({childkey:child for childkey, child in zip(childrenkeys, children)})           
-        return function
+            self.__nodes.update({parentkey:parent})
+            self.__nodes.update({childkey:child for childkey, child in zip(childrenkeys, children)})           
+        return pipeline
     
     def __call__(self, tablekey, *args, **kwargs):
         tables = {}
-        for node in reversed(self[tablekey]): 
+        for node in reversed(self.__nodes[tablekey]): 
             if node.key not in tables.keys(): 
                 tables.update(node(tables, *args, **kwargs))
         return tables[tablekey]
     
-    def tree(self, tablekey): return self.__treerenderer(self[tablekey])
-    def __str__(self):
-        calcstring = json.dumps({key:[value.namestr, value.tablestr, value.parmstr] for key, value in self.items()}, sort_keys=True, indent=3, separators=(',', ' : '))
-        return 'Calculations {}'.format(calcstring)
-
-
-
-
-
-
-
+    def __getitem__(self, tablekey):
+        def wrapper(*args, **kwargs): return self(tablekey, *args, **kwargs)
+        return wrapper
 
 
 
