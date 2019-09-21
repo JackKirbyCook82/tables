@@ -57,19 +57,23 @@ class TableViewBase(ABC):
     def factory(cls, *args, framechar, framelength, **kwargs): 
         cls.framechar, cls.framelength = framechar, framelength
         return cls
+     
+    def __init__(self, table): self.__table = table   
+    def __str__(self): return '\n'.join([self.frame, '\n\n'.join([self.namestring, *self.strings, self.variablestrings, self.structurestring]), self.frame])    
+    def __call__(self, *args, **kwargs): print(str(self))
         
     @property
     def frame(self): return self.framechar * self.framelength
-    
-    def __init__(self, table):
-        self.__variablestrings = '\n'.join([_variablestring(variableindex, variablekey, variablevalue) for variableindex, variablekey, variablevalue in zip(range(len(table.variables)), table.variables.keys(), table.variables.values())])        
-        self.__namestring = _namestring(table.__class__.__name__, table.name)
-        self.__structurestring = _structurestring(Structure(table.layers, table.dims, table.shape))       
+    @property
+    def variablestrings(self): return '\n'.join([_variablestring(variableindex, variablekey, variablevalue) for variableindex, variablekey, variablevalue in zip(range(len(self.__table.variables)), self.__table.variables.keys(), self.__table.variables.values())])        
+    @property
+    def namestring(self): return _namestring(self.__table.__class__.__name__, self.__table.name)
+    @property    
+    def structurestring(self): return _structurestring(Structure(self.__table.layers, self.__table.dims, self.__table.shape))       
        
     @abstractmethod
     def strings(self): pass
-    def __str__(self): return '\n'.join([self.frame, '\n\n'.join([self.__namestring, *self.strings, self.__variablestrings, self.__structurestring]), self.frame])
-        
+
 
 class ArrayTableView(TableViewBase):
     def __init__(self, arraytable):
@@ -82,9 +86,10 @@ class ArrayTableView(TableViewBase):
         super().__init__(arraytable)
 
     @property
-    def strings(self): return _flatten([self.__string(datakey) for datakey in self.__datakeys])
-    def __string(self, datakey): return [item for item in (self.__datastrings[datakey], self.__headerstrings[datakey], self.__scopestrings[datakey]) if item]    
-        
+    def strings(self): 
+        function = lambda datakey: [item for item in (self.__datastrings[datakey], self.__headerstrings[datakey], self.__scopestrings[datakey]) if item]
+        return _flatten([function(datakey) for datakey in self.__datakeys])
+       
 
 class FlatTableView(TableViewBase):
     def __init__(self, flattable):

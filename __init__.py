@@ -47,14 +47,10 @@ def show_options():
 
 
 ArrayTableView = views.ArrayTableView.factory(framechar=_OPTIONS['framechar'], framelength=_OPTIONS['linewidth'])
-ArrayTable = tbls.ArrayTable.factory(ArrayTableView)
+ArrayTable = tbls.ArrayTable.factory(view=ArrayTableView)
 
 FlatTableView = views.FlatTableView.factory(framechar=_OPTIONS['framechar'], framelength=_OPTIONS['linewidth'])
-FlatTable = tbls.FlatTable.factory(FlatTableView)
-
-
-
-
+FlatTable = tbls.FlatTable.factory(view=FlatTableView)
 
 
 

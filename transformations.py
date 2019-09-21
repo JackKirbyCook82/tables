@@ -126,7 +126,7 @@ class Combine:
         return xarray
 
 
-@Transformation.register(xarray_funcs={'average':xar.wtaverage, 'stdev':xar.wtstdev}, varray_funcs={'summation':var.summation})
+@Transformation.register(xarray_funcs={'average':xar.wtaverage, 'stdev':xar.wtstdev, 'median':xar.wtmedian}, varray_funcs={'summation':var.summation})
 class WeightReduction:
     def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, **kwargs):
         varray = getheader(dataarray, axis, axisvariable)
@@ -137,7 +137,7 @@ class WeightReduction:
         xarray.name = dataarray.name
         return xarray
      
-    def datavariable(self, variable, *args, datakey, axis, how, **kwargs): return variable.transformation(*args, method='reduction', how=how, axis=axis, **kwargs)   
+    def datavariable(self, variable, *args, datakey, axis, how, **kwargs): return variable.transformation(*args, method='wtreduction', how=how, axis=axis, **kwargs)   
     
     
 @Transformation.register(required=('direction',), xarray_funcs={'cumulate':xar.cumulate}, varray_funcs={'cumulate':var.cumulate})

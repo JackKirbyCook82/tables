@@ -153,7 +153,7 @@ def arraytable_layer(function):
     def wrapper(table, others, *args, axes, **kwargs):
         datakeys, otherdatakeys = table.datakeys, _flatten([other.datakeys for other in others])
         axes = _aslist(axes)          
-               
+
         assert len(set([*datakeys, *otherdatakeys])) == len([*datakeys, *otherdatakeys])          
 
         for axis in axes:

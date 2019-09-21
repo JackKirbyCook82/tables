@@ -28,19 +28,25 @@ _union = lambda x, y: list(set(x) | set(y))
 _intersection = lambda x, y: list(set(x) & set(y))
 _aslist = lambda items: [items] if not isinstance(items, (list, tuple)) else list(items)
 
-_tableview = lambda table: '\n\n'.join([uppercase(table.name, withops=True), str(table.data), str(table.variables)])
- 
 
 class TableBase(ABC):
-    View = None
+    View = lambda table: None
+    
     @classmethod
-    def factory(cls, View): 
-        cls.View = View
+    def factory(cls, view=None): 
+        if view: cls.View = view
         return cls
     
-    def __init__(self, data, *args, name, variables, **kwargs): 
+    def setdisplays(self, **displays):
+        create = lambda display: lambda *args, **kwargs: display[self.name](self, *args, **kwargs)            
+        self.__displays.update({key:create(display) for key, display in displays.items()})
+           
+    def __init__(self, data, *args, name, variables, displays={}, **kwargs): 
+        assert isinstance(displays, dict)
         self.__data, self.__name = data, name
         self.__variables = variables.select([key for key in self.keys if key in variables.keys()])
+        self.__displays = displays
+        self.__displays.update({'view':lambda *args, **kwargs: self.view()}) 
      
     @property
     def name(self): return self.__name       
@@ -48,10 +54,19 @@ class TableBase(ABC):
     def data(self): return self.__data   
     @property
     def variables(self): return self.__variables
-
-    def __str__(self): 
-        if self.View is not None: return str(self.View(self))
-        else: return _tableview(self)
+    @property
+    def displays(self): return self.__displays
+  
+    @property
+    def view(self): return self.View(self)   
+    @property
+    def display(self): return self.__displays
+    
+    def __str__(self):
+        view = self.View(self)
+        if view: return str(view)
+        else: return'\n\n'.join([uppercase(self.name, withops=True), str(self.data), str(self.variables)])
+    
     def __len__(self): return self.dim  
     def __eq__(self, other):
         assert isinstance(self, type(other))
@@ -99,9 +114,10 @@ class FlatTable(TableBase):
     def keys(self): return tuple(self.dataframe.columns)
 
     def retag(self, **tags): 
-        self.dataframe.rename(columns=tags, inplace=True)
-        for oldkey, newkey in tags.items(): self.variables[newkey] = self.variables[oldkey]
-        return self
+        dataframe = self.dataframe.rename(columns=tags, inplace=True)
+        variables = self.variables.copy()
+        for oldkey, newkey in tags.items(): variables[newkey] = variables[oldkey]
+        return self.__class__(dataframe, variables=variables, name=self.name)
 
     def __getitem__(self, columns): return self.select(*columns)
     def __setitem__(self, column, items): 
@@ -232,7 +248,7 @@ class ArrayTable(TableBase):
         newdataset = newdataset.sortby(axis, ascending=ascending)
         newdataset.coords[axis] = pd.Index([str(item) for item in newdataset.coords[axis].values], name=axis)
         newdataset.attrs = self.dataset.attrs
-        return self.__class__(newdataset, variables=self.variables.copy(), name=self.name)
+        return self.__class__(newdataset, variables=self.variables.copy(), name=self.name, displays=self.displays)
     
     def sortall(self, ascending=True):
         table = self
@@ -255,7 +271,7 @@ class ArrayTable(TableBase):
         order = axes + tuple([key for key in self.dimkeys if key not in axes])
         newdataset = self.dataset.transpose(*order)
         newdataset.attrs = self.dataset.attrs
-        return self.__class__(newdataset, variables=self.variables.copy(), name=self.name)
+        return self.__class__(newdataset, variables=self.variables.copy(), name=self.name, displays=self.displays)
 
     def expand(self, axis):
         assert axis in self.scopekeys
