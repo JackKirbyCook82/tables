@@ -51,11 +51,11 @@ class Structure(StructureSgmts):
 
 class TableViewBase(ABC):
     framechar = '='
-    framelength = 100
+    framewidth = 100
     
     @classmethod
-    def factory(cls, *args, framechar, framelength, **kwargs): 
-        cls.framechar, cls.framelength = framechar, framelength
+    def factory(cls, *args, framechar, framewidth, **kwargs): 
+        cls.framechar, cls.framewidth = framechar, framewidth
         return cls
      
     def __init__(self, table): self.__table = table   
@@ -63,7 +63,7 @@ class TableViewBase(ABC):
     def __call__(self, *args, **kwargs): print(str(self))
         
     @property
-    def frame(self): return self.framechar * self.framelength
+    def frame(self): return self.framechar * self.framewidth
     @property
     def variablestrings(self): return '\n'.join([_variablestring(variableindex, variablekey, variablevalue) for variableindex, variablekey, variablevalue in zip(range(len(self.__table.variables)), self.__table.variables.keys(), self.__table.variables.values())])        
     @property

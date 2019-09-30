@@ -10,8 +10,12 @@ import pandas as pd
 import numpy as np
 import json
 
-import tables.tables as tbls
-import tables.views as views
+from tables.views import ArrayTableView, FlatTableView
+from tables.tables import ArrayTable, FlatTable
+import tables.processors
+import tables.transformations
+import tables.operations
+import tables.combinations
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
@@ -29,14 +33,17 @@ def apply_options():
     for key, value in _PDMAPPING.items(): pd.set_option(key, _OPTIONS[value])
     np.set_printoptions(**{key:_OPTIONS[value] for key, value in _NPMAPPING.items()})
 
+    global ArrayTableView, ArrayTable
+    global FlatTableView, FlatTable
+    ArrayTableView = ArrayTableView.factory(framechar=_OPTIONS['framechar'], framewidth=_OPTIONS['linewidth'])
+    FlatTableView = FlatTableView.factory(framechar=_OPTIONS['framechar'], framewidth=_OPTIONS['linewidth'])
+    ArrayTable = ArrayTable.factory(view=ArrayTableView)
+    FlatTable = FlatTable.factory(view=FlatTableView)
+
 
 def set_options(**kwargs):
-    global ArrayTable, FlatTable
-    global ArrayTableView, FlatTableView
     global _OPTIONS
     _OPTIONS.update(kwargs)
-    ArrayTable = ArrayTable.factory(ArrayTableView.factory(framechar=_OPTIONS['framechar'], framelength=_OPTIONS['linewidth']))
-    FlatTable = FlatTable.factory(FlatTableView.factory(framechar=_OPTIONS['framechar'], framelength=_OPTIONS['linewidth']))
     apply_options()
 
     
@@ -44,13 +51,6 @@ def get_option(key): return _OPTIONS[key]
 def show_options(): 
     optionstrings = json.dumps({key:str(value) for key, value in _OPTIONS.items()}, sort_keys=True, indent=3, separators=(',', ' : '))
     print('Table Options {}\n'.format(optionstrings))
-
-
-ArrayTableView = views.ArrayTableView.factory(framechar=_OPTIONS['framechar'], framelength=_OPTIONS['linewidth'])
-ArrayTable = tbls.ArrayTable.factory(view=ArrayTableView)
-
-FlatTableView = views.FlatTableView.factory(framechar=_OPTIONS['framechar'], framelength=_OPTIONS['linewidth'])
-FlatTable = tbls.FlatTable.factory(view=FlatTableView)
 
 
 

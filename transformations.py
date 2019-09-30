@@ -63,8 +63,8 @@ class Transformation(ABC):
             newdataarrays, newdatavariables, newaxisvariables = {}, {}, {}
             for datakey, dataarray in xarray.data_vars.items():
                 newdataarrays[datakey], newdatavariables[datakey], newaxisvariables[datakey] = self.execute(dataarray, *args, axis=axis, datavariable=variables[datakey], axisvariable=variables[axis], **self.hyperparms, **kwargs)
-            newxarray = xr.merge(newdataarrays, join='outer')  
-            newaxisvariables = set(newaxisvariables.values())
+            newxarray = xr.merge([value.to_dataset(name=key) for key, value in newdataarrays.items()], join='outer')  
+            newaxisvariables = list(set(newaxisvariables.values()))
             assert len(newaxisvariables) == 1
             newaxisvariables = {axis:newaxisvariables[0]}
         else: raise TypeError(type(xarray))        
@@ -192,13 +192,14 @@ class Unconsolidate:
 
 
 @Transformation.register(required=('how', 'agg',), xarray_funcs={'groupby':xar.groupby}, 
-                         varray_funcs={'bins':var.groupby_bins, 'contains':var.groupby_contains, 'overlaps':var.groupby_overlaps})
+                         varray_funcs={'groups':var.groupby_bins, 'contains':var.groupby_contains, 'overlaps':var.groupby_overlaps})
 class GroupBy:
     def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, agg, **kwargs):
         varray = getheader(dataarray, axis, axisvariable)
-        axisgroups, axisvariable = self.varray_funcs[how](varray, *args, **kwargs)  
+        axisgroups = self.varray_funcs[how](varray, *args, **kwargs)  
         xarray = self.xarray_funcs['groupby'](dataarray, *args, axis=axis, axisgroups=axisgroups, agg=agg, **kwargs)
         xarray.name = dataarray.name
+        axisvariable = headertype(list(axisgroups.keys()))
         return xarray, datavariable, axisvariable        
 
     

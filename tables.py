@@ -36,7 +36,7 @@ class TableBase(ABC):
     def factory(cls, view=None): 
         if view: cls.View = view
         return cls
-    
+        
     def setdisplays(self, **displays):
         create = lambda display: lambda *args, **kwargs: display[self.name](self, *args, **kwargs)            
         self.__displays.update({key:create(display) for key, display in displays.items()})
@@ -306,7 +306,7 @@ class ArrayTable(TableBase):
         if factor == 1: return self
         newdataset = self.dataset * factor
         newdataset.attrs = self.dataset.attrs
-        newvariables = self.variables.update([(datakey, self.variables[datakey].factor(*args, how='multiply', factor=factor, **kwargs)) for datakey in _aslist(self.datakeys)])
+        newvariables = self.variables.update([(datakey, self.variables[datakey].transformation(*args, method='factor', how='multiply', factor=factor, **kwargs)) for datakey in _aslist(self.datakeys)])
         return self.__class__(newdataset, variables=newvariables, name=self.name)    
         
     def divide(self, factor, *args, **kwargs):
@@ -314,7 +314,7 @@ class ArrayTable(TableBase):
         if factor == 1: return self
         newdataset = self.dataset / factor
         newdataset.attrs = self.dataset.attrs     
-        newvariables = self.variables.update([(datakey, self.variables[datakey].factor(*args, how='divide', factor=factor, **kwargs)) for datakey in _aslist(self.datakeys)])
+        newvariables = self.variables.update([(datakey, self.variables[datakey].transformation(*args, method='factor', how='divide', factor=factor, **kwargs)) for datakey in _aslist(self.datakeys)])
         return self.__class__(newdataset, variables=newvariables, name=self.name)    
 
     def flatten(self): 
