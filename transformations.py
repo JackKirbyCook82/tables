@@ -38,7 +38,7 @@ def setheader(dataarray, axis, header):
     return dataarray 
 
 def headertype(varray): 
-    types = list(set([type(item) for item in varray]))
+    types = list(set([type(item) for item in _aslist(varray)]))
     assert len(types) == 1
     return types[0]       
 

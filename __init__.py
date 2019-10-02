@@ -12,14 +12,14 @@ import json
 
 from tables.views import ArrayTableView, FlatTableView
 from tables.tables import ArrayTable, FlatTable
-import tables.processors
-import tables.transformations
-import tables.operations
-import tables.combinations
+import tables.combinations as combinations
+import tables.operations as operations
+import tables.transformations as transformations
+import tables.processors as processors
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
-__all__ = ['ArrayTable', 'FlatTable', 'set_options', 'get_option', 'show_options']
+__all__ = ['ArrayTable', 'FlatTable', 'set_options', 'get_option', 'show_options', 'combinations', 'operations', 'transformations', 'processors']
 __copyright__ = "Copyright 2018, Jack Kirby Cook"
 __license__ = ""
 
