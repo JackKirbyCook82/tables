@@ -152,19 +152,13 @@ class FlatTable(TableBase):
         variables[key] = type(dataframe[key].loc[0])
         dataframe[key] = dataframe[key].apply(str)
         return dict(data=dataframe, variables=variables, name=self.name)    
-    
-    def todataframe(self, columns, index=None):
+   
+    def pivot(self, index=[], columns=[], values=[], aggs={}):
+        index, columns, values = [_aslist(item) for item in (index, columns, values)]
         dataframe = self.dataframe.copy()
-        if index: dataframe = dataframe.set_index(index, drop=True)
-        for column in columns: dataframe[column] = dataframe[column].apply(lambda x: self.variables[column].fromstr(x).value)
-        return dataframe[_aslist(columns)]
-    
-    def toseries(self, column, index=None):
-        assert isinstance(column, str)
-        dataframe = self.dataframe.copy()
-        if index: dataframe = dataframe.set_index(index, drop=True)
-        dataframe[column] = dataframe[column].apply(lambda x: self.variables[column].fromstr(x).value)
-        return dataframe[column].squeeze()    
+        for value in values: dataframe[value] = dataframe[value].apply(lambda x: self.variables[value].fromstr(x).value)
+        aggs = {value:agg for value, agg in aggs.items() if value in values.keys()}
+        return dataframe.pivot_table(index=index, columns=columns, values=values, aggfunc=aggs)
     
     def unflatten(self, *datakeys, **kwargs):
         dataframe = self.dataframe.copy(deep=True)
