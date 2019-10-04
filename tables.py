@@ -8,6 +8,7 @@ Created on Fri Mar 15 2019
 
 from abc import ABC, abstractmethod
 import pandas as pd
+import numpy as np
 import xarray as xr
 from numbers import Number
 from collections import OrderedDict as ODict
@@ -23,6 +24,8 @@ __all__ = ['ArrayTable', 'FlatTable']
 __copyright__ = "Copyright 2018, Jack Kirby Cook"
 __license__ = ""
 
+
+_AGGREGATIONS = {'sum':np.sum, 'avg':np.mean, 'max':np.max, 'min':np.min}
 
 _union = lambda x, y: list(set(x) | set(y))
 _intersection = lambda x, y: list(set(x) & set(y))
@@ -156,9 +159,24 @@ class FlatTable(TableBase):
     def pivot(self, index=[], columns=[], values=[], aggs={}):
         index, columns, values = [_aslist(item) for item in (index, columns, values)]
         dataframe = self.dataframe.copy()
+        for item in index: dataframe[item] = dataframe[item].apply(lambda x: self.variables[item].fromstr(x))
         for value in values: dataframe[value] = dataframe[value].apply(lambda x: self.variables[value].fromstr(x).value)
-        aggs = {value:agg for value, agg in aggs.items() if value in values.keys()}
-        return dataframe.pivot_table(index=index, columns=columns, values=values, aggfunc=aggs)
+        aggs = {value:_AGGREGATIONS[aggkey] for value, aggkey in aggs.items() if value in values}
+        pivoted = dataframe.pivot_table(index=index, columns=columns, values=values, aggfunc=aggs)
+        pivoted = pivoted.sort_index(ascending=True)
+        return pivoted
+
+    def toseries(self, value, index=[]):
+        dataframe = self.dataframe[[value, *_aslist(index)]]
+        if index: dataframe = dataframe.set_index(index, drop=True)
+        dataframe.loc[:, value] = dataframe[value].apply(lambda x: self.variables[value].fromstr(x).value)
+        return dataframe.squeeze()
+        
+    def todataframe(self, *values, index=[]):
+        dataframe = self.dataframe[[*values, *_aslist(index)]]
+        if index: dataframe = dataframe.set_index(index, drop=True)
+        for value in values: dataframe.loc[:, value] = dataframe[value].apply(lambda x: self.variables[value].fromstr(x).value)
+        return dataframe
     
     def unflatten(self, *datakeys, **kwargs):
         dataframe = self.dataframe.copy(deep=True)
