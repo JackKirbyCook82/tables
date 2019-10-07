@@ -44,13 +44,12 @@ def headertype(varray):
 
 
 class Transformation(ABC):
+    def __repr__(self): return '{}({})'.format(self.__class__.__name__, ', '.join(['='.join([key, str(value)]) for key, value in self.hyperparms.items()]))    
     def __init__(self, **hyperparms): 
         self.hyperparms = {key:value for key, value in self.defaults.items()}
         self.hyperparms.update(hyperparms)  
-        assert all([key in self.hyperparms.keys() for key in self.required])      
-        print('Created Transformation: {}\n'.format(str(self)))
-    def __repr__(self): return '{}(hyperparms={})'.format(self.__class__.__name__, self.transformtype, self.extract, self.hyperparms)
-    def __str__(self): return '{}({})'.format(self.__class__.__name__, ', '.join(['='.join([key, str(value)]) for key, value in self.hyperparms.items()]))
+        assert all([key in self.hyperparms.keys() for key in self.required])   
+        print('Created: {}\n'.format(repr(self)))
 
     @arraytable_transform
     def __call__(self, xarray, *args, axis, variables, **kwargs):
@@ -221,15 +220,13 @@ class Inversion(object):
     defaults = {'how':'linear', 'fill':{}, 'smoothing':{}}
     xarray_funcs={'inversion':nar.inversion, 'factory':xar.xarray_fromvalues}
     varray_funcs={'factory':var.varray_fromvalues}
-    
+
+    def __repr__(self): return '{}({})'.format(self.__class__.__name__, ', '.join(['='.join([key, str(value)]) for key, value in self.hyperparms.items()]))    
     def __init__(self, **hyperparms): 
         self.hyperparms = {key:value for key, value in self.defaults.items()}
         self.hyperparms.update(hyperparms)  
         assert all([key in self.hyperparms.keys() for key in self.required])   
-        print('Created Transformation: {}\n'.format(str(self)))
-    def __repr__(self): return '{}(hyperparms={})'.format(self.__class__.__name__, self.transformtype, self.extract, self.hyperparms)
-    def __str__(self): return '{}({})'.format(self.__class__.__name__, ', '.join(['='.join([key, str(value)]) for key, value in self.hyperparms.items()]))
-
+        print('Created: {}\n'.format(repr(self)))
 
     @arraytable_inversion
     def __call__(self, dataarray, *args, axis, variables, **kwargs):

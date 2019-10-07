@@ -7,8 +7,9 @@ Created on Mon Jul 15 2019
 """
 
 import json
+from collections import namedtuple as ntuple
 
-from utilities.tree import Node, TreeRenderer
+from utilities.tree import Node
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
@@ -21,7 +22,6 @@ _aslist = lambda items: [items] if not isinstance(items, (list, tuple)) else lis
 
 
 class Display(object):
-    def __repr__(self): return '{}({})'.format(self.__class__.__name__, self.__function)
     def __init__(self, function, inputparms_mapping): 
         assert isinstance(inputparms_mapping, dict)
         self.__inputParms = inputparms_mapping
@@ -46,8 +46,7 @@ class Display(object):
         return decorator
 
 
-class Pipeline(object):
-    def __repr__(self): return '{}({}, {})'.format(self.__class__.__name__, self.__function, {key:repr(display) for key, display in self.__displays.items()})
+class Pipeline(object):        
     def __init__(self, function, inputparms_mappings, inputtable_mappings):
         assert all([isinstance(mappings, dict) for mappings in (inputparms_mappings, inputtable_mappings)])
         assert inputparms_mappings.keys() == inputtable_mappings.keys()
@@ -57,15 +56,16 @@ class Pipeline(object):
         self.__displays = {}
         
     @property
-    def mapping(self): return self.__inputTables
+    def tables(self): return self.__inputTables
     @property
     def parms(self): return self.__inputParms
+    
+    def __iter__(self): 
+        for outputTable, inputTables in self.__inputTables.items(): yield outputTable, inputTables
 
-    def __call__(self, tablekey, *args, tables={}, **kwargs):
-        assert isinstance(tables, dict)
-        inputTables = [tables[inputTable] for inputTable in self.__inputTables[tablekey]]
+    def __call__(self, tablekey, *args, **kwargs):
         inputParms = self.__inputParms[tablekey]
-        table = self.__function(*inputTables, *args, **inputParms, name=tablekey, **kwargs)
+        table = self.__function(*args, **inputParms, name=tablekey, **kwargs)
         table.setdisplays(**self.__displays)
         return table
     
@@ -88,68 +88,90 @@ class Pipeline(object):
         return decorator
 
 
+CalculationKeySgmts = ntuple('CalculationKeySgmts', 'calulationID pipelineID')
+class CalculationKey(CalculationKeySgmts):
+    calculationkeyformat = '({}){}' 
+    def __str__(self): return self.calculationkeyformat.format(self.calulationID, self.pipelineID)
+
+
 class CalculationNode(Node):
-    nameformat = 'Pipeline: {name}'
-    tablesformat = 'Tables: ({fromtables}) ==> ({totable})'
-    parmsformat = 'Parms: ({})'
-    
-    def __init__(self, key, pipeline):
+    def __init__(self, calculationKey, pipeline):
+        assert isinstance(calculationKey, CalculationKey)
+        super().__init__(calculationKey)
         self.__pipeline = pipeline
-        super().__init__(key)
+        self.__table = None
+        
+    @property
+    def calculated(self): return self.__table is not None 
+    @property
+    def table(self): return self.__table
     
+    @property
+    def calculationKey(self): return self.key
+
     @property
     def pipeline(self): return self.__pipeline
     @property
-    def parms(self): return self.pipeline.parms[self.key]
+    def parms(self): return self.__pipeline.parms[self.calculationKey.pipelineID]
     @property
-    def tables(self): return self.pipeline.mapping[self.key]    
-    
-    @property
-    def namestr(self): return self.nameformat.format(name=super().__str__())
-    @property
-    def tablestr(self): return self.tablesformat.format(fromtables=', '.join(self.tables), totable=self.key)
-    @property
-    def parmstr(self): return self.parmsformat.format(', '.join(['='.join([key, str(value)]) for key, value in self.parms.items()]))
-    def __str__(self):  return '\n'.join([self.namestr, self.tablestr, self.parmstr])
-    
-    def __call__(self, tables, *args, **kwargs): 
-        assert isinstance(tables, dict)
-        return {self.key:self.pipeline[self.key](*args, tables=tables, **kwargs)}
-        
+    def tables(self): return self.__pipeline.tables[self.calculationKey.pipelineID]    
+
+    def __call__(self, *args, **kwargs): 
+        if self.calculated: return self.table
+        tables = [child(*args, **kwargs) for child in self.children]
+        return self.pipeline[self.calculationKey.pipelineID](*tables, *args, **kwargs)
+  
 
 class Calculation(object):
-    def __init__(self, name=None, **renderstyle): 
-        self.__nodes = {}
-        self.__treerenderer = TreeRenderer(**renderstyle)
-        self.__name = name
+    def __repr__(self): return '{}(calculationID={}, calculationName={})'.format(self.__class__.__name__, self.calculationID, self.calculationName)
+    def __init__(self, calculationID, calculationName, treerenderer): 
+        self.__calculationID = calculationID
+        self.__calculationName = calculationName
+        self.__treerenderer = treerenderer
+        self.__calculationNodes = {}
+         
+    @property
+    def calculationID(self): return self.__calculationID  
+    @property
+    def calculationName(self): return self.__calculationName
     
-    def showtree(self, tablekey): print(str(self.__treerenderer(self.__nodes[tablekey])), '\n')
+    def showtree(self, tablekey): print(str(self.__treerenderer(self.__calculationNodes[tablekey])), '\n')   
     
-    def __str__(self):
-        name = self.__class__.__name__ if not self.__name else '_'.join([self.__name, self.__class__.__name__])
-        jsonstr = json.dumps({key:[value.namestr, value.tablestr, value.parmstr] for key, value in self.__nodes.items()}, sort_keys=True, indent=3, separators=(',', ' : '))        
-        return ' '.join([name, jsonstr])  
- 
-    def __call__(self, tablekey, *args, **kwargs):
-        tables = {}
-        for node in reversed(self.__nodes[tablekey]): 
-            if node.key not in tables.keys(): 
-                tables.update(node(tables, *args, **kwargs))
-        return tables[tablekey]
-    
+    def __call__(self, tablekey, *args, **kwargs): return self.__calculationNodes[tablekey](*args, **kwargs)    
     def __getitem__(self, tablekey):
         def wrapper(*args, **kwargs): return self(tablekey, *args, **kwargs)
         return wrapper
 
     def register(self, pipeline):
-        for parentkey, childrenkeys in pipeline.mapping.items():
-            assert isinstance(childrenkeys, list)
-            parent = self.__nodes.get(parentkey, CalculationNode(parentkey, pipeline))
-            children = [self.__nodes.get(childkey, CalculationNode(childkey, pipeline)) for childkey in childrenkeys]
-            parent.addchildren(*children)
-            self.__nodes.update({parentkey:parent})
-            self.__nodes.update({childkey:child for childkey, child in zip(childrenkeys, children)})           
+        assert isinstance(pipeline, Pipeline)     
+        for parent_pipelineID, children_pipelineIDs in pipeline.tables.items():
+            parent_calculationKey = CalculationKey(self.calculationID, parent_pipelineID)
+            children_calculationKeys = [CalculationKey(self.calculationID, child_pipelineID) for child_pipelineID in _aslist(children_pipelineIDs)]
+            
+            parent = CalculationNode(parent_calculationKey, pipeline)            
+            children = [self.__calculationNodes[str(child_calculationKey)] for child_calculationKey in children_calculationKeys]
+            parent.addchildren(*children)            
+            self.__calculationNodes[str(parent_calculationKey)] = parent
         return pipeline
+    
+    def extend(self, other):
+        def decorator(pipeline):
+            for parent_pipelineID, children_pipelineIDs in pipeline.tables.items():
+                parent_calculationKey = CalculationKey(self.calculationID, parent_pipelineID)
+                children_calculationKeys = [CalculationKey(other.calculationID, child_pipelineID) for child_pipelineID in _aslist(children_pipelineIDs)]
+                
+                parent = CalculationNode(parent_calculationKey, pipeline)            
+                children = [other.__calculationNodes[str(child_calculationKey)] for child_calculationKey in children_calculationKeys]
+                parent.addchildren(*children)            
+                self.__calculationNodes[str(parent_calculationKey)] = parent
+            return pipeline
+        return decorator        
+    
+
+
+
+
+
 
 
 
