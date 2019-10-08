@@ -138,11 +138,15 @@ class Calculation(object):
     @property
     def calculationName(self): return self.__calculationName
     
-    def showtree(self, tablekey): print(str(self.__treerenderer(self.__calculationNodes[tablekey])), '\n')   
+    def showtree(self, tablekey): print(str(self.__treerenderer(self.__calculationNodes[tablekey])), '\n') 
     def __str__(self):
+        displays = lambda tablekey: ', '.join(self.__calculationNodes[tablekey].displays)
+        tables = lambda tablekey: ', '.join(self.__calculationNodes[tablekey].tables)
+        content = {str(key):{'tables':tables(key), 'displays':displays(key)} for key in self.__calculationNodes.keys()}
+        content = {key:{k:v for k, v in value.items() if v} for key, value in content.items()}
+        
         namestr = ' '.join([self.calculationID.upper(), self.calculationName, self.__class__.__name__])
-        content = {str(key):str(value.displays) for key, value in self.__calculationNodes.items()}
-        jsonstr = json.dumps(content, sort_keys=True, indent=3, separators=(',', ' : '))    
+        jsonstr = json.dumps(content, sort_keys=False, indent=3, separators=(',', ' : '))    
         return ' '.join([namestr, jsonstr])
 
     def __call__(self, tablekey, *args, **kwargs): return self.__calculationNodes[tablekey](*args, **kwargs)    
