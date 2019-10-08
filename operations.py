@@ -7,6 +7,8 @@ Created on Sun Jun 2 2019
 """
 
 from functools import update_wrapper
+import numpy as np
+import xarray as xr
 
 from tables.adapters import arraytable_operation
 
@@ -56,7 +58,7 @@ def multiply(dataarray, other, *args, variables, **kwargs):
 
 @operation
 def divide(dataarray, other, *args, variables, **kwargs):
-    newdataarray = dataarray / other  
+    newdataarray = dataarray / other
     newdataarray.name = '/'.join([dataarray.name, other.name])
     newvariable = variables[dataarray.name].operation(variables[other.name], *args, method='divide', **kwargs)
     return newdataarray, newvariable

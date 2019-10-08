@@ -53,12 +53,14 @@ class Pipeline(object):
         self.__inputParms = inputparms_mappings
         self.__inputTables = inputtable_mappings
         self.__function = function
-        self.__displays = {}
+        self.__displays = dict()
         
     @property
     def tables(self): return self.__inputTables
     @property
     def parms(self): return self.__inputParms
+    @property
+    def displays(self): return self.__displays
     
     def __iter__(self): 
         for outputTable, inputTables in self.__inputTables.items(): yield outputTable, inputTables
@@ -70,7 +72,7 @@ class Pipeline(object):
         return table
     
     def __getitem__(self, tablekey):
-        def wrapper(*args, tables={}, **kwargs): return self(tablekey, *args, tables=tables, **kwargs)
+        def wrapper(*args, **kwargs): return self(tablekey, *args, **kwargs)
         return wrapper 
               
     @classmethod
@@ -111,10 +113,11 @@ class CalculationNode(Node):
 
     @property
     def pipeline(self): return self.__pipeline
+
     @property
-    def parms(self): return self.__pipeline.parms[self.calculationKey.pipelineID]
+    def tables(self): return [str(child.key) for child in self.children]
     @property
-    def tables(self): return self.__pipeline.tables[self.calculationKey.pipelineID]    
+    def displays(self): return [str(displaykey) for displaykey in self.pipeline.displays.keys()]
 
     def __call__(self, *args, **kwargs): 
         if self.calculated: return self.table
@@ -136,7 +139,12 @@ class Calculation(object):
     def calculationName(self): return self.__calculationName
     
     def showtree(self, tablekey): print(str(self.__treerenderer(self.__calculationNodes[tablekey])), '\n')   
-    
+    def __str__(self):
+        namestr = ' '.join([self.calculationID.upper(), self.calculationName, self.__class__.__name__])
+        content = {str(key):str(value.displays) for key, value in self.__calculationNodes.items()}
+        jsonstr = json.dumps(content, sort_keys=True, indent=3, separators=(',', ' : '))    
+        return ' '.join([namestr, jsonstr])
+
     def __call__(self, tablekey, *args, **kwargs): return self.__calculationNodes[tablekey](*args, **kwargs)    
     def __getitem__(self, tablekey):
         def wrapper(*args, **kwargs): return self(tablekey, *args, **kwargs)
