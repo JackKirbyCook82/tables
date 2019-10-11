@@ -122,7 +122,7 @@ class WeightReduction:
         varray = self.varray_funcs[by](varray, *args,  **kwargs)
         xarray = xarray.assign_coords(**{axis:str(varray)}).expand_dims(axis) 
         xarray.name = dataarray.name
-        datavariable = datavariable.transformation(*args, method='wtreduction', how=how, **kwargs)
+        datavariable = datavariable.transformation(*args, method='wtreduction', how=how, axis=axis, **kwargs)
         axisvariable = headertype(varray)        
         return xarray, datavariable, axisvariable
 

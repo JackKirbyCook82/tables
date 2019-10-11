@@ -18,7 +18,6 @@ __all__ = ['add', 'subtract', 'multiply', 'divide']
 __copyright__ = "Copyright 2018, Jack Kirby Cook"
 __license__ = ""
 
-
 _aslist = lambda items: [items] if not isinstance(items, (list, tuple)) else list(items)     
 
 
@@ -57,8 +56,9 @@ def multiply(dataarray, other, *args, variables, **kwargs):
 
 
 @operation
-def divide(dataarray, other, *args, variables, **kwargs):
+def divide(dataarray, other, *args, variables, fill={}, **kwargs):
     newdataarray = dataarray / other
+    for fromvalue, tovalue in fill.items(): newdataarray[newdataarray == fromvalue] = tovalue
     newdataarray.name = '/'.join([dataarray.name, other.name])
     newvariable = variables[dataarray.name].operation(variables[other.name], *args, method='divide', **kwargs)
     return newdataarray, newvariable
