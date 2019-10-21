@@ -7,8 +7,6 @@ Created on Sun Jun 2 2019
 """
 
 from functools import update_wrapper
-import numpy as np
-import xarray as xr
 
 from tables.adapters import arraytable_operation
 

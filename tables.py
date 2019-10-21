@@ -30,7 +30,7 @@ _AGGREGATIONS = {'sum':np.sum, 'avg':np.mean, 'max':np.max, 'min':np.min}
 _union = lambda x, y: list(set(x) | set(y))
 _intersection = lambda x, y: list(set(x) & set(y))
 _aslist = lambda items: [items] if not isinstance(items, (list, tuple)) else list(items)
-
+_filterempty = lambda items: [item for item in _aslist(items) if item]
 
 class TableBase(ABC):
     View = lambda table: None
@@ -39,17 +39,10 @@ class TableBase(ABC):
     def factory(cls, view=None): 
         if view: cls.View = view
         return cls
-        
-    def setdisplays(self, **displays):
-        create = lambda display: lambda *args, **kwargs: display[self.name](self, *args, **kwargs)            
-        self.__displays.update({key:create(display) for key, display in displays.items()})
-           
-    def __init__(self, data, *args, name, variables, displays={}, **kwargs): 
-        assert isinstance(displays, dict)
+
+    def __init__(self, data, *args, name, variables, **kwargs): 
         self.__data, self.__name = data, name
         self.__variables = variables.select([key for key in self.keys if key in variables.keys()])
-        self.__displays = displays
-        self.__displays.update({'view':lambda *args, **kwargs: self.view()}) 
      
     @property
     def name(self): return self.__name       
@@ -57,14 +50,9 @@ class TableBase(ABC):
     def data(self): return self.__data   
     @property
     def variables(self): return self.__variables
+
     @property
-    def displays(self): return self.__displays
-  
-    @property
-    def view(self): return self.View(self)   
-    @property
-    def display(self): return self.__displays
-    
+    def view(self): return self.View(self)       
     def __str__(self):
         view = self.View(self)
         if view: return str(view)
@@ -122,7 +110,7 @@ class FlatTable(TableBase):
         for oldkey, newkey in tags.items(): variables[newkey] = variables[oldkey]
         return self.__class__(dataframe, variables=variables, name=self.name)
 
-    def __getitem__(self, columns): return self.select(*columns)
+    def __getitem__(self, columns): return self.select(*_filterempty(columns))
     def __setitem__(self, column, items): 
         assert isinstance(items, dict)
         axes = _aslist(items.pop('axes'))
@@ -237,6 +225,7 @@ class ArrayTable(TableBase):
         if isinstance(items, int): return self[self.datakeys[items]]
         elif isinstance(items, str): return self[[items]]        
         elif isinstance(items, (list, tuple)):
+            items = _filterempty(items)
             assert all([item in self.datakeys for item in items])
             newdataset = self.dataset[items]
         elif isinstance(items, dict):
@@ -260,7 +249,7 @@ class ArrayTable(TableBase):
         newdataset = newdataset.sortby(axis, ascending=ascending)
         newdataset.coords[axis] = pd.Index([str(item) for item in newdataset.coords[axis].values], name=axis)
         newdataset.attrs = self.dataset.attrs
-        return self.__class__(newdataset, variables=self.variables.copy(), name=self.name, displays=self.displays)
+        return self.__class__(newdataset, variables=self.variables.copy(), name=self.name)
     
     def sortall(self, ascending=True):
         table = self
@@ -283,7 +272,7 @@ class ArrayTable(TableBase):
         order = axes + tuple([key for key in self.dimkeys if key not in axes])
         newdataset = self.dataset.transpose(*order)
         newdataset.attrs = self.dataset.attrs
-        return self.__class__(newdataset, variables=self.variables.copy(), name=self.name, displays=self.displays)
+        return self.__class__(newdataset, variables=self.variables.copy(), name=self.name)
 
     def expand(self, axis):
         assert axis in self.scopekeys
