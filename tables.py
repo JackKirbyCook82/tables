@@ -168,9 +168,7 @@ class FlatTable(TableBase):
     
     def unflatten(self, *datakeys, **kwargs):
         dataframe = self.dataframe.copy(deep=True)
-        for datakey in datakeys:
-            try: dataframe.loc[:, datakey] = dataframe[datakey].apply(lambda x: self.variables[datakey].fromstr(x).value)
-            except: pass        
+        for datakey in datakeys: dataframe.loc[:, datakey] = dataframe[datakey].apply(lambda x: self.variables[datakey].fromstr(x).value)      
         xarray = xarray_fromdataframe(dataframe, datakeys=datakeys, forcedataset=True, **kwargs)
         return ArrayTable(xarray, variables=self.variables.copy(), name=self.name)
 
