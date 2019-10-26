@@ -32,6 +32,10 @@ _intersection = lambda x, y: list(set(x) & set(y))
 _aslist = lambda items: [items] if not isinstance(items, (list, tuple)) else list(items)
 _filterempty = lambda items: [item for item in _aslist(items) if item]
 
+_replacenan = lambda dataarray, value: xr.where(~np.isnan(dataarray), dataarray, value)
+_replaceinf = lambda dataarray, value: xr.where(~np.isinf(dataarray), dataarray, value)
+_replaceneg = lambda dataarray, value: xr.where(dataarray > 0, dataarray, value)
+
 class TableBase(ABC):
     View = lambda table: None
     
@@ -58,7 +62,7 @@ class TableBase(ABC):
         if view: return str(view)
         else: return'\n\n'.join([uppercase(self.name, withops=True), str(self.data), str(self.variables)])
     
-    def __len__(self): return self.dim  
+    def __len__(self): return self.dims 
     def __eq__(self, other):
         assert isinstance(self, type(other))
         return all([self.data == other.data, self.variables == other.variables])
@@ -93,6 +97,8 @@ class FlatTable(TableBase):
     def dataframe(self): return self.data
     @property
     def series(self): return self.data.squeeze()
+    @property
+    def columns(self): return self.data.columns
 
     @property
     def layers(self): return 1
@@ -189,6 +195,13 @@ class ArrayTable(TableBase):
     def arrays(self): return {datakey:self.dataset[datakey].values for datakey in self.datakeys} 
     
     @property
+    def spans(self): return {datakey:(np.nanmin(self.dataarrays[datakey].values), np.nanmax(self.dataarrays[datakey].values)) for datakey in self.datakeys} 
+    @property
+    def mins(self): return {datakey:np.nanmin(self.dataarrays[datakey].values) for datakey in self.datakeys}
+    @property
+    def maxs(self): return {datakey:np.nanmax(self.dataarrays[datakey].values) for datakey in self.datakeys}
+    
+    @property
     def layers(self): return len(self.dataset.data_vars)
     @property
     def dims(self): return len(self.dataset.dims)
@@ -220,7 +233,8 @@ class ArrayTable(TableBase):
         return self.__class__(newdataset, variables=variables, name=self.name)
 
     def __getitem__(self, items): 
-        if isinstance(items, int): return self[self.datakeys[items]]
+        if not items: return self
+        elif isinstance(items, int): return self[self.datakeys[items]]
         elif isinstance(items, str): return self[[items]]        
         elif isinstance(items, (list, tuple)):
             items = _filterempty(items)
@@ -264,6 +278,24 @@ class ArrayTable(TableBase):
         table = self
         for axis in self.dimkeys: table = table.dropna(axis)
         return table
+
+    def fillna(self, fill=None, **fillvalues):
+        newdataarrays = {datakey:_replacenan(self.dataarrays[datakey], fillvalues.get(datakey, fill)) for datakey, dataarray in self.dataarrays.items()}
+        newdataset = xr.merge([value.to_dataset(name=key) for key, value in newdataarrays.items()], join='outer') 
+        newdataset.attrs = self.dataset.attrs
+        return self.__class__(newdataset, variables=self.variables.copy(), name=self.name)
+    
+    def fillinf(self, fill=None, **fillvalues):
+        newdataarrays = {datakey:_replaceinf(self.dataarrays[datakey], fillvalues.get(datakey, fill)) for datakey, dataarray in self.dataarrays.items()}
+        newdataset = xr.merge([value.to_dataset(name=key) for key, value in newdataarrays.items()], join='outer') 
+        newdataset.attrs = self.dataset.attrs  
+        return self.__class__(newdataset, variables=self.variables.copy(), name=self.name)
+
+    def fillneg(self, fill=None, **fillvalues):
+        newdataarrays = {datakey:_replaceneg(self.dataarrays[datakey], fillvalues.get(datakey, fill)) for datakey, dataarray in self.dataarrays.items()}
+        newdataset = xr.merge([value.to_dataset(name=key) for key, value in newdataarrays.items()], join='outer') 
+        newdataset.attrs = self.dataset.attrs  
+        return self.__class__(newdataset, variables=self.variables.copy(), name=self.name)   
 
     def transpose(self, *axes):
         assert all([key in self.axeskeys for key in axes])

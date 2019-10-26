@@ -6,6 +6,8 @@ Created on Sun Jun 2 2019
 
 """
 
+import numpy as np
+import xarray as xr
 from functools import update_wrapper
 
 from tables.adapters import arraytable_operation
@@ -16,7 +18,10 @@ __all__ = ['add', 'subtract', 'multiply', 'divide']
 __copyright__ = "Copyright 2018, Jack Kirby Cook"
 __license__ = ""
 
+
 _aslist = lambda items: [items] if not isinstance(items, (list, tuple)) else list(items)     
+_replacenan = lambda dataarray, value: xr.where(~np.isnan(dataarray), dataarray, value)
+_replaceinf = lambda dataarray, value: xr.where(~np.isinf(dataarray), dataarray, value)
 
 
 def operation(function):
@@ -54,9 +59,10 @@ def multiply(dataarray, other, *args, variables, **kwargs):
 
 
 @operation
-def divide(dataarray, other, *args, variables, fill={}, **kwargs):
+def divide(dataarray, other, *args, variables, infinity=True, **kwargs):
+    assert isinstance(infinity, bool)
     newdataarray = dataarray / other
-    for fromvalue, tovalue in fill.items(): newdataarray[newdataarray == fromvalue] = tovalue
+    if not infinity: newdataarray =_replaceinf(newdataarray, np.nan)
     newdataarray.name = '/'.join([dataarray.name, other.name])
     newvariable = variables[dataarray.name].operation(variables[other.name], *args, method='divide', **kwargs)
     return newdataarray, newvariable

@@ -98,12 +98,12 @@ class Scale:
 
 @Transformation.register(required=('how', 'by'), defaults={'anchor':'summation'},
                          xarray_funcs={'summation':xar.summation, 'average':xar.average, 'stdev':xar.stdev, 'minimum':xar.minimum, 'maximum':xar.maximum}, 
-                         varray_funcs={'summation':var.summation, 'couple':var.couple})
+                         varray_funcs={'summation':var.summation, 'couple':var.couple, 'minimum':var.minimum, 'maximum':var.maximum})
 class Reduction: 
     def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, by, **kwargs):
         varray = getheader(dataarray, axis, axisvariable)
         xarray = self.xarray_funcs[how](dataarray, *args, axis=axis, **kwargs)
-        varray = self.varray_funcs[by](varray, *args, **kwargs)
+        varray = self.varray_funcs[by](varray, *args, axis=axis, **kwargs)
         xarray = xarray.assign_coords(**{axis:str(varray)}).expand_dims(axis)   
         xarray.name = dataarray.name
         datavariable = datavariable.transformation(*args, method='reduction', how=how, **kwargs)
@@ -127,17 +127,17 @@ class WeightReduction:
         return xarray, datavariable, axisvariable
 
 
-@Transformation.register(required=('how', 'by'),
+@Transformation.register(required=('how', 'by', 'period'),
                          xarray_funcs={'average':xar.moving_average, 'summation':xar.moving_summation},
                          varray_funcs={'summation':var.moving_summation, 'couple':var.moving_couple})
 class Moving:
-    def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, by, **kwargs):
+    def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, by, period, **kwargs):
         varray = getheader(dataarray, axis, axisvariable)
-        xarray = self.xarray_funcs[how](dataarray, *args, axis=axis, **kwargs)
-        varray = self.varray_funcs[by](varray, *args, **kwargs)
+        xarray = self.xarray_funcs[how](dataarray, *args, axis=axis, period=period, **kwargs)
+        varray = self.varray_funcs[by](varray, *args, period=period, **kwargs)
         xarray = setheader(xarray, axis, varray)
         xarray.name = dataarray.name
-        datavariable = datavariable.transformation(*args, method='moving', how=how, **kwargs)
+        datavariable = datavariable.transformation(*args, method='moving', how=how, period=period, **kwargs)
         axisvariable = headertype(varray)
         return xarray, datavariable, axisvariable        
 
