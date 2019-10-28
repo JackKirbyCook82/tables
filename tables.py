@@ -34,7 +34,7 @@ _filterempty = lambda items: [item for item in _aslist(items) if item]
 
 _replacenan = lambda dataarray, value: xr.where(~np.isnan(dataarray), dataarray, value)
 _replaceinf = lambda dataarray, value: xr.where(~np.isinf(dataarray), dataarray, value)
-_replaceneg = lambda dataarray, value: xr.where(dataarray > 0, dataarray, value)
+_replaceneg = lambda dataarray, value: xr.where(dataarray >= 0, dataarray, value)
 
 class TableBase(ABC):
     View = lambda table: None

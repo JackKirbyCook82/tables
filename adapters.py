@@ -77,25 +77,24 @@ def arraytable_transform(function):
 
 
 def arraytable_operation(function):
-    def wrapper(table, other, *args, axes=[], **kwargs):
+    def wrapper(table, other, *args, axis=None, noncoreaxes=[], **kwargs):
         assert isinstance(other, type(table))
         assert table.layers == other.layers == 1
         TableClass = table.__class__
         
         datakey, otherdatakey = table.datakeys[0], other.datakeys[0]
-        axes = [item for item in [*_aslist(kwargs.get('axis', None)), *_aslist(axes)] if item is not None]
-        noncoreaxes = [*axes, datakey, otherdatakey]
+        noncoreaxes = [*noncoreaxes, datakey, otherdatakey]
 
-        for axis in axes:
-            table = table.removescope(axis) if axis in table.scopekeys else table
-            other = other.removescope(axis) if axis in other.scopekeys else other
+        for noncoreaxis in noncoreaxes:
+            table = table.removescope(noncoreaxis) if noncoreaxis in table.scopekeys else table
+            other = other.removescope(noncoreaxis) if noncoreaxis in other.scopekeys else other
         
         table, other = align_arraytables(table, other, *args, method='outer', noncoreaxes=noncoreaxes, **kwargs)        
         datavariables = data_variables(table, other, *args, **kwargs)
         variables = axes_variables(table, other, *args, **kwargs)        
-
+        
         dataarray, otherdataarray = table.dataarrays[datakey], other.dataarrays[otherdatakey]
-        newdataarray, newvariables = function(dataarray, otherdataarray, *args, variables=datavariables, **kwargs)  
+        newdataarray, newvariables = function(dataarray, otherdataarray, *args, axis=axis, variables={**datavariables, **variables}, **kwargs)  
         variables = variables.update([(key, value) for key, value in newvariables.items()])       
         newdataset = newdataarray.to_dataset()        
         

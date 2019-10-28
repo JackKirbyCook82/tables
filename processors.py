@@ -37,6 +37,7 @@ class Pipeline(Node):
         tables = [child(*args, **kwargs) for child in self.children]
         print("Running Pipeline: '{}'\n".format(str(self.key)))
         self.__table = self.__function(self.key, *tables, *args, **self.__parms, **kwargs)
+        self.__table.rename(self.__parms.get('name', self.key))
         return self.__table
 
 
@@ -57,7 +58,7 @@ class Calculation(Tree):
     def create_transforms(self, nodekeys, *args, parms={}, **kwargs):
         def decorator(function):
             assert isinstance(parms, dict)
-            pipelines = [Pipeline(nodekey, function, parms.get(nodekey, {}), children=[self.nodes.get(childkey) for childkey in childrenkeys]) for nodekey, childrenkeys in nodekeys.items()]            
+            pipelines = [Pipeline(nodekey, function, parms.get(nodekey, {}), children=[self.nodes.get(childkey) for childkey in _aslist(childrenkeys)]) for nodekey, childrenkeys in nodekeys.items()]            
             self.append(*pipelines)
             return function
         return decorator
