@@ -232,7 +232,7 @@ class ArrayTable(TableBase):
         for oldkey, newkey in tags.items(): variables[newkey] = variables.pop(oldkey)
         return self.__class__(newdataset, variables=variables, name=self.name)
 
-    def __getitem__(self, items): 
+    def __getitem__(self, items):
         if not items: return self
         elif isinstance(items, int): return self[self.datakeys[items]]
         elif isinstance(items, str): return self[[items]]        
@@ -241,19 +241,18 @@ class ArrayTable(TableBase):
             assert all([item in self.datakeys for item in items])
             newdataset = self.dataset[items]
         elif isinstance(items, dict):
-            indexitems = {key:value for key, value in items.items() if isinstance(value, int)}
-            keyitems = {key:value for key, value in items.items() if isinstance(value, str)}
-            sliceitems = {key:value for key, value in items.items() if isinstance(value, slice)}
-            assert len(indexitems) + len(sliceitems) + len(keyitems) == len(items) 
-            keyitems.update({key:tuple(self.dataset.coords[key].values)[index] for key, index in indexitems.items()})
-            assert all([key in tuple(self.dataset.dims) for key in keyitems.keys()])                                     
-            newdataset = self.dataset[sliceitems]          
-            newdataset = newdataset.loc[keyitems]                  
+            positional = {key:[value for value in _aslist(values) if isinstance(value, (int, slice))] for key, values in items.items()}
+            index = {key:[value for value in _aslist(values) if isinstance(value, str)] for key, values in items.items()}
+            positional = {key:values for key, values in positional.items() if values}
+            index = {key:values for key, values in index.items() if values}
+            newdataset = self.dataset
+            if positional: newdataset = newdataset.isel(**positional)
+            if index: newdataset = newdataset.sel(**index)
         else: raise TypeError(type(items))        
         newdataset.attrs = self.dataset.attrs
         table = self.__class__(newdataset, variables=self.variables.copy(), name=self.name)
         return table.dropallna()
-
+        
     def sort(self, axis, ascending=True):
         assert axis in self.dimkeys
         newdataset = self.dataset.copy()

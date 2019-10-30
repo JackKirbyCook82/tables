@@ -6,6 +6,8 @@ Created on Mon Jul 15 2019
 
 """
 
+from collections import namedtuple as ntuple
+
 from utilities.tree import Node, Tree, Renderer
 from utilities.dispatchers import clstype_singledispatcher as typedispatcher
 
@@ -42,6 +44,11 @@ class Pipeline(Node):
 
 
 class Calculation(Tree):
+    def __init__(self, *args, **kwargs):
+        self.__queue = {}
+        self.__mapping ={}
+        super().__init__(*args, **kwargs)
+    
     @typedispatcher
     def create(self, nodekeys, *args, parms={}, **kwargs): raise TypeError(type(nodekeys))
     
@@ -49,8 +56,8 @@ class Calculation(Tree):
     def create_feeds(self, nodekeys, *args, parms={}, **kwargs):
         def decorator(function):
             assert isinstance(parms, dict)
-            pipelines = [Pipeline(nodekey, function, parms.get(nodekey, {})) for nodekey in nodekeys]
-            self.append(*pipelines)
+            self.__queue.update({nodekey:Pipeline(nodekey, function, parms=parms.get(nodekey, {})) for nodekey in nodekeys})
+            self.__mapping.update({nodekey:[] for nodekey in nodekeys})
             return function
         return decorator
         
@@ -58,14 +65,17 @@ class Calculation(Tree):
     def create_transforms(self, nodekeys, *args, parms={}, **kwargs):
         def decorator(function):
             assert isinstance(parms, dict)
-            pipelines = [Pipeline(nodekey, function, parms.get(nodekey, {}), children=[self.nodes.get(childkey) for childkey in _aslist(childrenkeys)]) for nodekey, childrenkeys in nodekeys.items()]            
-            self.append(*pipelines)
+            self.__queue.update({nodekey:Pipeline(nodekey, function, parms=parms.get(nodekey, {})) for nodekey, childrenkeys in nodekeys.items()})
+            self.__mapping.update({nodekey:_aslist(childrenkeys) for nodekey, childrenkeys in nodekeys.items()})
             return function
         return decorator
         
-
-    
-    
+    def __call__(self, *args, **kwargs):
+        queue, self.__queue = self.__queue, {}
+        mapping, self.__mapping = self.__mapping, {}
+        for nodekey, childrenkeys in mapping.items():
+            queue[nodekey].addchildren(*[queue[childkey] for childkey in childrenkeys])
+        self.append(*queue.values())
     
     
     
