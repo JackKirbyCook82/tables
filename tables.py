@@ -241,18 +241,30 @@ class ArrayTable(TableBase):
             assert all([item in self.datakeys for item in items])
             newdataset = self.dataset[items]
         elif isinstance(items, dict):
-            positional = {key:[value for value in _aslist(values) if isinstance(value, (int, slice))] for key, values in items.items()}
-            index = {key:[value for value in _aslist(values) if isinstance(value, str)] for key, values in items.items()}
-            positional = {key:values for key, values in positional.items() if values}
-            index = {key:values for key, values in index.items() if values}
-            newdataset = self.dataset
-            if positional: newdataset = newdataset.isel(**positional)
-            if index: newdataset = newdataset.sel(**index)
+            try: return self.sel(**items)
+            except: return self.isel(**items)
         else: raise TypeError(type(items))        
         newdataset.attrs = self.dataset.attrs
-        table = self.__class__(newdataset, variables=self.variables.copy(), name=self.name)
-        return table.dropallna()
-        
+        return self.__class__(newdataset, variables=self.variables.copy(), name=self.name).dropallna()
+     
+    def isel(self, **axis):
+        assert all([key in self.headerkeys for key in axis.keys()])
+        assert all([isinstance(value, (int, slice, list)) for value in axis.values()])
+        for value in axis.values(): 
+            if isinstance(value, list): assert all([isinstance(item, int) for item in value])
+        newdataset = self.dataset.isel(**axis)
+        newdataset.attrs = self.dataset.attrs
+        return self.__class__(newdataset, variables=self.variables.copy(), name=self.name).dropallna()          
+            
+    def sel(self, **axis):
+        assert all([key in self.headerkeys for key in axis.keys()])
+        assert all([isinstance(value, (str, list)) for value in axis.values()])
+        for value in axis.values(): 
+            if isinstance(value, list): assert all([isinstance(item, str) for item in value])
+        newdataset = self.dataset.sel(**axis)
+        newdataset.attrs = self.dataset.attrs
+        return self.__class__(newdataset, variables=self.variables.copy(), name=self.name).dropallna()  
+    
     def sort(self, axis, ascending=True):
         assert axis in self.dimkeys
         newdataset = self.dataset.copy()
@@ -310,11 +322,13 @@ class ArrayTable(TableBase):
         return self.__class__(newdataset, variables=self.variables.copy(), name=self.name)
     
     def squeeze(self, *axes):
-        assert all([len(self.dataset.coords[axis]) == 1 for axis in axes])
+        assert all([axis in self.axeskeys for axis in axes])
         newdataset = self.dataset
         for axis in axes: 
             if axis in self.scopekeys: pass
-            elif axis in self.headerkeys: newdataset = newdataset.squeeze(dim=axis, drop=False)
+            elif axis in self.headerkeys:
+                assert len(self.dataset.coords[axis]) == 1
+                newdataset = newdataset.squeeze(dim=axis, drop=False)
             else: raise ValueError(axis)
         newdataset.attrs = self.dataset.attrs
         return self.__class__(newdataset, variables=self.variables.copy(), name=self.name)
