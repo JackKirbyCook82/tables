@@ -83,12 +83,12 @@ def arraytable_operation(function):
         TableClass = table.__class__
         
         datakey, otherdatakey = table.datakeys[0], other.datakeys[0]
-        noncoreaxes = [*noncoreaxes, datakey, otherdatakey]
+        noncoreaxes = list(set([*noncoreaxes, datakey, otherdatakey]))
 
         for noncoreaxis in noncoreaxes:
             table = table.removescope(noncoreaxis) if noncoreaxis in table.scopekeys else table
             other = other.removescope(noncoreaxis) if noncoreaxis in other.scopekeys else other
-        
+
         table, other = align_arraytables(table, other, *args, method='outer', noncoreaxes=noncoreaxes, **kwargs)        
         datavariables = data_variables(table, other, *args, **kwargs)
         variables = axes_variables(table, other, *args, **kwargs)        
