@@ -89,7 +89,7 @@ class FlatTable(TableBase):
         try: dataframe = data.to_frame()
         except: dataframe = data
         for column in dataframe.columns: 
-            try: dataframe[column] = dataframe[column].apply(lambda x: str(variables[column](x)))
+            try: dataframe[:, column] = dataframe[column].apply(lambda x: str(variables[column](x)))
             except: pass      
         super().__init__(dataframe, *args, variables=variables, **kwargs)
        
