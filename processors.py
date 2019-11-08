@@ -7,6 +7,7 @@ Created on Mon Jul 15 2019
 """
 
 import json
+import pandas as pd
 from collections import namedtuple as ntuple
 
 from utilities.tree import Node, Tree, Renderer
@@ -68,6 +69,11 @@ class Pipeline(Node):
         return self.__table
 
 
+class EmptyCalculationQueryError(Exception): pass
+class CalculationPipelineNotConnectedError(Exception): pass
+class CalculationPipelineNotCreatedError(Exception): pass
+
+
 class Calculation(Tree):
     def todict(self): return {key:pipeline.todict() for key, pipeline in self.nodes.items()}
     def __init__(self, *args, **kwargs):
@@ -93,7 +99,12 @@ class Calculation(Tree):
                 self.queue(key, create_queue(key, values))           
             return function
         return decorator
-     
+         
+    def __getitem__(self, key): 
+        if key not in self.nodes.keys(): raise CalculationPipelineNotCreatedError(self.key, key)
+        if key in self.__queue.keys(): raise CalculationPipelineNotConnectedError(self.key, key)
+        return super().__getitem__(key) 
+    
     def __call__(self, *args, **kwargs):
         for key, values in self.__queue.items():
             self.nodes[key].addchildren(*[self.__calculations[calckey].nodes[nodekey] for calckey, nodekey in values])
@@ -104,12 +115,42 @@ class Calculation(Tree):
         assert other.key not in self.__calculations.keys()
         assert other.key != self.key
         self.__calculations[other.key] = other
+
+    def __createdataframe(self):
+        create_content = lambda calculation: {(calculation.key, key):{**value['meta'],'tables':value['tables']} for key, value in calculation.todict().items()}
+        content = {}
+        for calculation in self.__calculations.values(): content.update(create_content(calculation))
+        return pd.DataFrame(content).transpose()        
     
-    #def todataframe(self):
-    #    pass
+    def __querydataframe(self, dataframe, universe, headers, scope):
+        assert isinstance(universe, (type(None), str))
+        assert isinstance(headers, tuple)
+        assert isinstance(scope, dict)
+        if universe: dataframe = dataframe[dataframe['universe']==universe]
+        if dataframe.empty: raise EmptyCalculationQueryError() 
+        for header in headers: 
+            if header: dataframe[header in dataframe['headers']]
+        if dataframe.empty: raise EmptyCalculationQueryError()
+        for key, value in scope.items():
+            if value: dataframe = dataframe[dataframe['scope'].apply(lambda x: x[key] == value if key in x.keys() else False)]
+        if dataframe.empty: raise EmptyCalculationQueryError()
+        dataframe = dataframe.dropna(axis=0, how='all')
+        dataframe.columns.name = '{} Query'.format(self.name if self.name else 'Calculation')
+        try: return dataframe.to_frame()
+        except: return dataframe        
     
-    #def tofile(self):
-    #    pass
+    def __formatdataframe(self, dataframe):
+        dataframe['headers'] = dataframe['headers'].apply(lambda x: ', '.join(list(x)))
+        dataframe['scope'] = dataframe['scope'].apply(lambda x: ', '.join(['='.join([key, value]) for key, value in x.items()]))
+        dataframe['tables'] = dataframe['tables'].apply(lambda x: ', '.join(list(x)))
+        dataframe = dataframe[['universe', 'headers', 'scope', 'tables']]
+        return dataframe
+    
+    def query(self, *headers, universe=None, **scope): 
+        dataframe = self.__createdataframe()
+        dataframe = self.__querydataframe(dataframe, universe, headers, scope)
+        dataframe = self.__formatdataframe(dataframe)
+        return dataframe
     
     
     
