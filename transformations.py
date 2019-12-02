@@ -96,7 +96,7 @@ class Scale:
         return xarray, datavariable, axisvariable
      
 
-@Transformation.register(required=('how', 'by'), defaults={'anchor':'summation'},
+@Transformation.register(required=('how', 'by'),
                          xarray_funcs={'summation':xar.summation, 'average':xar.average, 'stdev':xar.stdev, 'minimum':xar.minimum, 'maximum':xar.maximum}, 
                          varray_funcs={'summation':var.summation, 'couple':var.couple, 'minimum':var.minimum, 'maximum':var.maximum})
 class Reduction: 

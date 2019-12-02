@@ -120,8 +120,8 @@ class FlatTable(TableBase):
     def __setitem__(self, column, items): 
         assert isinstance(items, dict)
         axes = _aslist(items.pop('axes'))
-        if len(axes) == 1: newitems = self.createdata(column, fromcolumns='single',  axis=axes[0], **items)
-        elif len(axes) > 1: newitems = self.createdata(column ,fromcolumns='multiple', axes=axes, **items)
+        if len(axes) == 1: newitems = self.createdata('single', column, axis=axes[0], **items)
+        elif len(axes) > 1: newitems = self.createdata('multiple', column, axes=axes, **items)
         else: raise ValueError(axes)  
         data = newitems.pop('data')
         self = self.__class__(data, **newitems)  
@@ -129,7 +129,7 @@ class FlatTable(TableBase):
     def select(self, *columns): return self.__class__(self.dataframe[_aslist(columns)], variables=self.variables, name=self.name)
     def drop(self, *columns): return self.select(*[column for column in self.dataframe.columns if column not in columns])
     
-    @keydispatcher('fromcolumns')
+    @keydispatcher
     def createdata(self, key, *args, **kwargs): raise KeyError(key)
     
     @createdata.register('single')
