@@ -7,7 +7,6 @@ Created on Mon Jul 15 2019
 """
 
 import json
-import pandas as pd
 from collections import namedtuple as ntuple
 
 from utilities.tree import Node, Tree, Renderer
@@ -36,10 +35,10 @@ class Meta(MetaSgmts):
 
 
 class Pipeline(Node):
-    def todict(self): return dict(meta=self.__meta.todict(), parms=self.__parms, tables=tuple([child.key for child in self.children]))     
-    def __init__(self, key, function, parms, meta, parent=None, children=[]):
+    def __init__(self, key, function, tables, parms, meta, parent=None, children=[]):
         assert isinstance(parms, dict)
         self.__function = function
+        self.__tables = _aslist(tables)
         self.__parms = parms
         self.__meta = meta
         self.__table = None
@@ -50,14 +49,17 @@ class Pipeline(Node):
     @property
     def table(self): return self.__table
     @property
+    def tables(self): return self.__tables
+    @property
     def meta(self): return self.__meta
     @property
     def parms(self): return self.__parms
 
     def __str__(self): 
-        content = {'meta':json.loads(str(self.__meta))}
-        if self.children: content['tables'] = tuple([child.key for child in self.children])
-        if self.__parms: content ['parms'] = self.__parms
+        content = {}
+        if self.__tables: content['tables'] = self.__tables
+        if self.__parms: content['parms'] = self.__parms
+        if self.__meta: content['meta'] = json.loads(str(self.__meta))
         return json.dumps(content, sort_keys=False, indent=3, separators=(',', ' : '), default=str)  
 
     def __call__(self, *args, **kwargs):
@@ -69,90 +71,36 @@ class Pipeline(Node):
         return self.__table
 
 
-class EmptyCalculationQueryError(Exception): pass
-class CalculationPipelineNotConnectedError(Exception): pass
-class CalculationPipelineNotCreatedError(Exception): pass
+class FrozenCalculationError(Exception): pass
 
 
-class Calculation(Tree):
-    def todict(self): return {key:pipeline.todict() for key, pipeline in self.nodes.items()}
+class Calculation(Tree):     
+    @property
+    def frozen(self): return self.__frozen
     def __init__(self, *args, **kwargs):
-        self.__queue = {}
+        self.__frozen = False
         super().__init__(*args, **kwargs)
-        self.__calculations = {self.key:self}       
-        
-    def queue(self, key, values): self.__queue[key] = _aslist(values)
-    def reset(self): self.__queue = {}
-            
+    
     def __str__(self):
         namestr = '{} ("{}")'.format(self.name if self.name else self.__class__.__name__, self.key)
-        content = {key:{**json.loads(str(value.meta)), 'tables':', '.join([child.key for child in value.children])} if value.children else json.loads(str(value.meta)) for key, value in self.nodes.items()}        
+        content = {key:{**json.loads(str(pipeline.meta)), 'tables':', '.join(pipeline.tables)} if pipeline.tables else json.loads(str(pipeline.meta)) for key, pipeline in self.items()}        
         jsonstr = json.dumps(content, sort_keys=False, indent=3, separators=(',', ' : '), default=str)  
         return ' '.join([namestr, jsonstr])
         
     def create(self, **kwargs):
+        if self.frozen: raise FrozenCalculationError(repr(self))
         def decorator(function):
-            create_pipeline = lambda key, values: Pipeline(key, function, parms=values.get('parms', {}), meta=values['meta'])
-            create_queue = lambda key, values: [item if isinstance(item, tuple) else (self.key, item) for item in _aslist(values.get('tables', []))]
-            for key, values in kwargs.items():
-                self.append(create_pipeline(key, values))
-                self.queue(key, create_queue(key, values))           
+            create_pipeline = lambda key, values: Pipeline(key, function, tables=values.get('tables', []), parms=values.get('parms', {}), meta=values['meta'])
+            self.update({key:create_pipeline(key, values) for key, values in kwargs.items()})
             return function
         return decorator
-         
-    def __getitem__(self, key): 
-        if key not in self.nodes.keys(): raise CalculationPipelineNotCreatedError(self.key, key)
-        if key in self.__queue.keys(): raise CalculationPipelineNotConnectedError(self.key, key)
-        return super().__getitem__(key) 
-    
+
     def __call__(self, *args, **kwargs):
-        for key, values in self.__queue.items():
-            self.nodes[key].addchildren(*[self.__calculations[calckey].nodes[nodekey] for calckey, nodekey in values])
-        self.reset()
+        if self.frozen: raise FrozenCalculationError(repr(self))
+        for key, pipeline in self.items(): 
+            self[key].addchildren(*[self[tablekey] for tablekey in pipeline.tables])
+        self.__frozen = True
 
-    def extend(self, other):
-        assert isinstance(other, type(self))
-        assert other.key not in self.__calculations.keys()
-        assert other.key != self.key
-        self.__calculations[other.key] = other
-
-    def __createdataframe(self):
-        create_content = lambda calculation: {(calculation.key, key):{**value['meta'],'tables':value['tables']} for key, value in calculation.todict().items()}
-        content = {}
-        for calculation in self.__calculations.values(): content.update(create_content(calculation))
-        return pd.DataFrame(content).transpose()        
-    
-    def __querydataframe(self, dataframe, universe, headers, scope):
-        assert isinstance(universe, (type(None), str))
-        assert isinstance(headers, tuple)
-        assert isinstance(scope, dict)
-        if universe: dataframe = dataframe[dataframe['universe']==universe]
-        if dataframe.empty: raise EmptyCalculationQueryError() 
-        for header in headers: 
-            if header: dataframe[header in dataframe['headers']]
-        if dataframe.empty: raise EmptyCalculationQueryError()
-        for key, value in scope.items():
-            if value: dataframe = dataframe[dataframe['scope'].apply(lambda x: x[key] == value if key in x.keys() else False)]
-        if dataframe.empty: raise EmptyCalculationQueryError()
-        dataframe = dataframe.dropna(axis=0, how='all')
-        dataframe.columns.name = '{} Query'.format(self.name if self.name else 'Calculation')
-        try: return dataframe.to_frame()
-        except: return dataframe        
-    
-    def __formatdataframe(self, dataframe):
-        dataframe['headers'] = dataframe['headers'].apply(lambda x: ', '.join(list(x)))
-        dataframe['scope'] = dataframe['scope'].apply(lambda x: ', '.join(['='.join([key, value]) for key, value in x.items()]))
-        dataframe['tables'] = dataframe['tables'].apply(lambda x: ', '.join(list(x)))
-        dataframe = dataframe[['universe', 'headers', 'scope', 'tables']]
-        return dataframe
-    
-    def query(self, *headers, universe=None, **scope): 
-        dataframe = self.__createdataframe()
-        dataframe = self.__querydataframe(dataframe, universe, headers, scope)
-        dataframe = self.__formatdataframe(dataframe)
-        return dataframe
-    
-    
     
     
 
