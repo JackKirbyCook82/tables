@@ -6,8 +6,10 @@ Created on Fri Mar 15 2019
 
 """
 
+import os.path
 from abc import ABC, abstractmethod
 import pandas as pd
+import openpyxl
 import numpy as np
 import xarray as xr
 from numbers import Number
@@ -177,6 +179,14 @@ class FlatTable(TableBase):
         for datakey in datakeys: dataframe.loc[:, datakey] = dataframe[datakey].apply(lambda x: self.variables[datakey].fromstr(x).value)      
         xarray = xarray_fromdataframe(dataframe, datakeys=datakeys, forcedataset=True, **kwargs)
         return ArrayTable(xarray, variables=self.variables.copy(), name=self.name)
+
+    def toexcel(self, file):
+        if not os.path.isfile(file): openpyxl.Workbook().save(file)            
+        writer = pd.ExcelWriter(file, engine='openpyxl') 
+        writer.book = openpyxl.load_workbook(file)
+        self.dataframe.to_excel(writer, sheet_name=self.name, index=False, header=True, engine='openpyxl') 
+        writer.save()
+        writer.close()
 
 
 class ArrayTable(TableBase):
