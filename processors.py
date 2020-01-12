@@ -7,13 +7,12 @@ Created on Mon Jul 15 2019
 """
 
 import json
-from collections import namedtuple as ntuple
 
 from utilities.tree import Node, Tree, Renderer
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
-__all__ = ['Meta', 'Pipeline', 'Calculation', 'Renderer']
+__all__ = ['Pipeline', 'Calculation', 'Renderer']
 __copyright__ = "Copyright 2018, Jack Kirby Cook"
 __license__ = ""
 
@@ -21,23 +20,11 @@ __license__ = ""
 _aslist = lambda items: [items] if not isinstance(items, (list, tuple)) else list(items)   
 
 
-MetaSgmts = ntuple('MetaSgmts', 'universe headers scope')
-class Meta(MetaSgmts):
-    def __new__(cls, universe, *headers, **scope): return super().__new__(cls, universe, headers, scope)        
-    def __str__(self): 
-        universe = self.universe
-        headers = (self.headers[0] if len(self.headers) == 1 else ', '.join(list(self.headers))) if self.headers else None
-        scope = ', '.join(['='.join([key, value]) for key, value in self.scope.items()]) if self.scope else None
-        content = {key:value for key, value in {'universe':universe, 'headers':headers, 'scope':scope}.items() if value}
-        return json.dumps(content, sort_keys=False, indent=3, separators=(',', ' : '), default=str)
-
-
 class Pipeline(Node):
-    def __init__(self, key, function, parms, meta, parent=None, children=[]):
+    def __init__(self, key, function, parms, parent=None, children=[]):
         assert isinstance(parms, dict)
         self.__function = function
         self.__parms = parms
-        self.__meta = meta
         self.__table = None
         super().__init__(key, parent=parent, children=children)
 
@@ -46,15 +33,10 @@ class Pipeline(Node):
     @property
     def table(self): return self.__table
     @property
-    def meta(self): return self.__meta
-    @property
     def parms(self): return self.__parms
 
     def __str__(self): 
-        content = {}
-        if self.children: content['tables'] = [str(child.key) for child in self.children]
-        if self.__parms: content['parms'] = self.__parms
-        if self.__meta: content['meta'] = json.loads(str(self.__meta))
+        content = {'tables':[str(child.key) for child in self.children], 'parms':self.__parms}
         return json.dumps(content, sort_keys=False, indent=3, separators=(',', ' : '), default=str)  
 
     def __call__(self, *args, **kwargs):
@@ -88,13 +70,14 @@ class Calculation(Tree):
     
     def __str__(self):
         namestr = '{} ("{}")'.format(self.name if self.name else self.__class__.__name__, self.key)
-        content = {key:{**json.loads(str(pipeline.meta)), 'tables':', '.join([str(child.key) for child in pipeline.children])} for key, pipeline in iter(self)}        
+        if self.frozen: content = {key:[str(child.key) for child in pipeline.children] for key, pipeline in iter(self)}        
+        else: content = {key:self.__queue[key] for key, pipeline in iter(self)}  
         jsonstr = json.dumps(content, sort_keys=False, indent=3, separators=(',', ' : '), default=str)  
         return ' '.join([namestr, jsonstr])
 
     def create(self, **kwargs):
         def decorator(function):
-            pipelines = [Pipeline(key, function, value.get('parms', {}), value['meta']) for key, value in kwargs.items()]
+            pipelines = [Pipeline(key, function, value.get('parms', {})) for key, value in kwargs.items()]
             queue = {key:_aslist(value.get('tables', [])) for key, value in kwargs.items()}
             assert not any([key in self.__queue.keys() for key in queue.keys()])
             super(Calculation, self).append(*pipelines)

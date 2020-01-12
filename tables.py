@@ -16,7 +16,7 @@ from numbers import Number
 from collections import OrderedDict as ODict
 
 from utilities.dataframes import dataframe_fromxarray
-from utilities.xarrays import xarray_fromdataframe
+from utilities.xarrays import xarray_fromdataframe, standardize, absolute
 from utilities.dispatchers import clskey_singledispatcher as keydispatcher
 from utilities.strings import uppercase
 
@@ -37,6 +37,8 @@ _filterempty = lambda items: [item for item in _aslist(items) if item]
 _replacenan = lambda dataarray, value: xr.where(~np.isnan(dataarray), dataarray, value)
 _replaceinf = lambda dataarray, value: xr.where(~np.isinf(dataarray), dataarray, value)
 _replaceneg = lambda dataarray, value: xr.where(dataarray >= 0, dataarray, value)
+_replacestd = lambda dataarray, value, std: xr.where(absolute(standardize(dataarray)) < std, dataarray, value)
+
 
 class TableBase(ABC):
     View = lambda table: None
@@ -318,6 +320,17 @@ class ArrayTable(TableBase):
         newdataset.attrs = self.dataset.attrs  
         return self.__class__(newdataset, variables=self.variables.copy(), name=self.name)   
 
+    @keydispatcher
+    def fillextreme(self, method, *args, threshold, fill=None, **fillvalues): raise KeyError(method)
+        
+    @fillextreme.register('stdev', 'std')
+    def __fillextreme_stdev(self, *args, threshold, fill=None, **fillvalues):
+        assert isinstance(threshold, Number)
+        newdataarrays = {datakey:_replacestd(dataarray, fillvalues.get(datakey, fill), threshold) for datakey, dataarray in self.dataarrays.items()}
+        newdataset = xr.merge([value.to_dataset(name=key) for key, value in newdataarrays.items()], join='outer') 
+        newdataset.attrs = self.dataset.attrs  
+        return self.__class__(newdataset, variables=self.variables.copy(), name=self.name)       
+    
     def transpose(self, *axes):
         assert all([key in self.axeskeys for key in axes])
         order = axes + tuple([key for key in self.dimkeys if key not in axes])
