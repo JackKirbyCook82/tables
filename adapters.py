@@ -7,6 +7,7 @@ Created on Tues Aug 20 2019
 """
 
 from functools import update_wrapper
+from collections import OrderedDict as ODict
 
 from tables.alignment import align_arraytables, data_variables, axes_variables
 
@@ -39,7 +40,7 @@ def flattable_transform(function):
            
         dataframe, variables = table.dataframe, table.variables.copy()
         newdataframe, newvariables = function(self, dataframe, variables=variables, *args, **kwargs)
-        variables = variables.update([(key, value) for key, value in newvariables.items()])        
+        variables = variables.update(ODict([(key, value) for key, value in newvariables.items()]))        
         
         return TableClass(data=newdataframe, variables=variables, name=kwargs.get('name', table.name))    
     update_wrapper(wrapper, function)
@@ -55,7 +56,7 @@ def arraytable_inversion(function):
         dataarray, variables = list(table.dataarrays.values())[0], table.variables.copy()
         newdataarray, newvariables = function(self, dataarray, *args, variables=variables, **kwargs)
         newdataset = newdataarray.to_dataset()
-        variables = variables.update([(key, value) for key, value in newvariables.items()])   
+        variables = variables.update(ODict([(key, value) for key, value in newvariables.items()]))
         
         return TableClass(data=newdataset, variables=variables, name=kwargs.get('name', table.name))
     update_wrapper(wrapper, function)
@@ -69,7 +70,7 @@ def arraytable_transform(function):
         
         dataset, variables = table.dataset, table.variables.copy()
         newdataset, newvariables = function(self, dataset, *args, axis=axis, variables=variables, **kwargs)
-        variables = variables.update([(key, value) for key, value in newvariables.items()])   
+        variables = variables.update(ODict([(key, value) for key, value in newvariables.items()]))   
         
         return TableClass(data=newdataset, variables=variables, name=kwargs.get('name', table.name))
     update_wrapper(wrapper, function)
@@ -95,7 +96,7 @@ def arraytable_operation(function):
         
         dataarray, otherdataarray = table.dataarrays[datakey], other.dataarrays[otherdatakey]
         newdataarray, newvariables = function(dataarray, otherdataarray, *args, axis=axis, variables={**datavariables, **variables}, **kwargs)  
-        variables = variables.update([(key, value) for key, value in newvariables.items()])       
+        variables = variables.update(ODict([(key, value) for key, value in newvariables.items()]))       
         newdataset = newdataarray.to_dataset()        
         
         return TableClass(data=newdataset, variables=variables, name=kwargs.get('name', table.name))
