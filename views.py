@@ -42,8 +42,7 @@ _scopestring = lambda scopekey, scopevalues: _SCOPEFORMAT.format(key=uppercase(s
 _variablestring = lambda variableindex, variablekey, variablevalue: _VARIABLEFORMAT.format(index=variableindex, key=uppercase(variablekey, withops=True), name=variablevalue.name())
 
 
-StructureSgmts = ntuple('Structure', 'layers dims shape')
-class Structure(StructureSgmts):
+class Structure(ntuple('Structure', 'layers dims shape')):
     @property
     def fields(self): return np.prod(self.shape)  
     def __str__(self): return _STRUCTUREFORMAT.format(**self._asdict(), fields=self.fields)
