@@ -35,38 +35,31 @@ def operation(function):
     return wrapper
 
 @operation
-def add(dataarray, other, *args, axis=None, variables, **kwargs):    
+def add(dataarray, other, *args, variables, **kwargs):    
     newdataarray = dataarray + other    
-    if axis: newdataarray = newdataarray.assign_coords(**{axis:str(variables[axis].fromstr(str(dataarray.coords[axis].values)).add(variables[axis].fromstr(str(other.coords[axis].values))))})
     newdataarray.name = '+'.join([dataarray.name, other.name]) if dataarray.name != other.name else dataarray.name
     newvariable = variables[dataarray.name].operation(variables[other.name], *args, method='add', **kwargs)
     return newdataarray, newvariable
 
-
 @operation
-def subtract(dataarray, other, *args, axis=None, variables, **kwargs):
+def subtract(dataarray, other, *args, variables, **kwargs):
     newdataarray = dataarray - other    
-    if axis: newdataarray = newdataarray.assign_coords(**{axis:str(variables[axis].fromstr(str(dataarray.coords[axis].values)).subtract(variables[axis].fromstr(str(other.coords[axis].values))))}) 
     newdataarray.name = '-'.join([dataarray.name, other.name]) if dataarray.name != other.name else dataarray.name
     newvariable = variables[dataarray.name].operation(variables[other.name], *args, method='subtract', **kwargs)
     return newdataarray, newvariable
 
-
 @operation
-def multiply(dataarray, other, *args, axis=None, variables, **kwargs):
+def multiply(dataarray, other, *args, variables, **kwargs):
     newdataarray = dataarray * other    
-    if axis: newdataarray = newdataarray.assign_coords(**{axis:str(variables[axis].fromstr(str(dataarray.coords[axis].values)).multiply(variables[axis].fromstr(str(other.coords[axis].values))))})
     newdataarray.name = '*'.join([dataarray.name, other.name])
     newvariable = variables[dataarray.name].operation(variables[other.name], *args, method='multiply', **kwargs)
     return newdataarray, newvariable
 
-
 @operation
-def divide(dataarray, other, *args, axis=None, variables, infinity=True, **kwargs):
+def divide(dataarray, other, *args, variables, infinity=True, **kwargs):
     assert isinstance(infinity, bool)
     newdataarray = dataarray / other
-    if not infinity: newdataarray =_replaceinf(newdataarray, np.nan)
-    if axis: newdataarray = newdataarray.assign_coords(**{axis:str(variables[axis].fromstr(str(dataarray.coords[axis].values)).divide(variables[axis].fromstr(str(other.coords[axis].values))))})    
+    if not infinity: newdataarray =_replaceinf(newdataarray, np.nan)   
     newdataarray.name = '/'.join([dataarray.name, other.name])
     newvariable = variables[dataarray.name].operation(variables[other.name], *args, method='divide', **kwargs)
     return newdataarray, newvariable

@@ -78,34 +78,42 @@ def arraytable_transform(function):
 
 
 def arraytable_operation(function):
-    def wrapper(table, other, *args, axis=None, noncoreaxes=[], **kwargs):
+    @retag
+    def wrapper(table, other, *args, axes=[], axis=None, noncoreaxes=[], noncoreaxis=None, **kwargs):
         assert isinstance(other, type(table))
         assert table.layers == other.layers == 1
         TableClass = table.__class__
         
+        noncoreaxes = [noncoreaxis for noncoreaxis in [*noncoreaxes, noncoreaxis] if noncoreaxis is not None]
+        axes = [axis for axis in [*axes, axis] if axis is not None]
         datakey, otherdatakey = table.datakeys[0], other.datakeys[0]
         noncoreaxes = list(set([*noncoreaxes, datakey, otherdatakey]))
+
+        for axis in [*axes, *noncoreaxes]:
+            try: table = table.squeeze(axis)
+            except: pass
+            try: other = other.squeeze(axis)
+            except: pass
 
         for noncoreaxis in noncoreaxes:
             table = table.removescope(noncoreaxis) if noncoreaxis in table.scopekeys else table
             other = other.removescope(noncoreaxis) if noncoreaxis in other.scopekeys else other
-
-        table, other = align_arraytables(table, other, *args, method='outer', noncoreaxes=noncoreaxes, **kwargs)        
+  
         datavariables = data_variables(table, other, *args, **kwargs)
-        variables = axes_variables(table, other, *args, **kwargs)        
-        
+        variables = axes_variables(table, other, *args, **kwargs)  
+
         dataarray, otherdataarray = table.dataarrays[datakey], other.dataarrays[otherdatakey]
-        newdataarray, newvariables = function(dataarray, otherdataarray, *args, axis=axis, variables={**datavariables, **variables}, **kwargs)  
+        newdataarray, newvariables = function(dataarray, otherdataarray, *args, variables=datavariables, **kwargs)  
         variables = variables.update(ODict([(key, value) for key, value in newvariables.items()]))       
-        newdataset = newdataarray.to_dataset()        
+        newdataset = newdataarray.to_dataset()  
         
         return TableClass(data=newdataset, variables=variables, name=kwargs.get('name', table.name))
     update_wrapper(wrapper, function)
-    return wrapper
-
+    return wrapper        
+        
 
 def arraytable_combination(function):
-    def wrapper(tables, *args, axis=None, axes=[], **kwargs):
+    def wrapper(tables, *args, axis=None, axes=[], noncoreaxis=None, noncoreaxes=[], **kwargs):
         table, others = _aslist(tables)[0], _aslist(tables)[1:]
         if not others: return table
         assert all([isinstance(other, type(table)) for other in others])        
@@ -115,7 +123,8 @@ def arraytable_combination(function):
         variablesname = tables[0].variables.name        
 
         axes = [item for item in [*_aslist(axis), *_aslist(axes)] if item is not None]
-        newxarray, newvariables = function(table, others, *args, axes=axes, **kwargs)        
+        noncoreaxes = [item for item in [*_aslist(axis), *_aslist(axes)] if item is not None]
+        newxarray, newvariables = function(table, others, *args, axes=axes, noncoreaxes=noncoreaxes, **kwargs)        
         try: newdataset = newxarray.to_dataset()
         except: newdataset = newxarray
     
@@ -133,10 +142,10 @@ def arraytable_combine(function):
 
         datakey, otherdatakeys = table.datakeys[0], [other.datakeys[0] for other in others]
         axis = _aslist(axes)[0]
-        
+
         assert all([datakey == otherdatakey for otherdatakey in otherdatakeys])
         assert axis not in [datakey, *otherdatakeys]
-        assert all([table.variables == other.variables for other in others])
+        assert all([dict(table.variables) == dict(other.variables) for other in others])
         
         others = [align_arraytables(table, other, *args, method='outer', **kwargs)[-1] for other in others]         
         dataarray, otherdataarrays = table.dataarrays[datakey], [list(other.dataarrays.values())[0] for other in others]
@@ -150,15 +159,14 @@ def arraytable_combine(function):
 
 def arraytable_layer(function):
     @arraytable_combination
-    def wrapper(table, others, *args, axes, **kwargs):
-        datakeys, otherdatakeys = table.datakeys, _flatten([other.datakeys for other in others])
-        axes = _aslist(axes)          
+    def wrapper(table, others, *args, noncoreaxes, **kwargs):
+        datakeys, otherdatakeys = table.datakeys, _flatten([other.datakeys for other in others])         
 
         assert len(set([*datakeys, *otherdatakeys])) == len([*datakeys, *otherdatakeys])          
 
-        for axis in axes:
-            table = table.removescope(axis) if axis in table.scopekeys else table
-            others = [other.removescope(axis) if axis in other.scopekeys else other for other in others]        
+        for noncoreaxis in noncoreaxes:
+            table = table.removescope(noncoreaxis) if noncoreaxis in table.scopekeys else table
+            others = [other.removescope(noncoreaxis) if noncoreaxis in other.scopekeys else other for other in others]        
                 
         for datakey in set([*datakeys, *otherdatakeys]):
             assert datakey not in table.headerkeys
@@ -181,23 +189,22 @@ def arraytable_layer(function):
 
 def arraytable_reconcile(function):
     @arraytable_combination
-    def wrapper(table, others, *args, axes, method, **kwargs):
+    def wrapper(table, others, *args, noncoreaxes, method, **kwargs):
         assert table.layers == 1
         assert all([other.layers == 1 for other in others])        
         
         datakey, other_datakeys = table.datakeys[0], [other.datakeys[0] for other in others]
-        headerkeys, others_headerkeys = table.headerkeys, [other.headerkeys for other in others]
-        axes = _aslist(axes)       
+        headerkeys, others_headerkeys = table.headerkeys, [other.headerkeys for other in others]      
         
         assert all([datakey == other_datakey for other_datakey in other_datakeys])
         assert all([set(headerkeys) == set(other_headerkeys) for other_headerkeys in others_headerkeys])        
         
-        assert all([axis != datakey for axis in axes])
-        assert all([axis not in headerkeys for axis in axes])
+        assert all([noncoreaxis != datakey for noncoreaxis in noncoreaxes])
+        assert all([noncoreaxis not in headerkeys for noncoreaxis in noncoreaxes])
 
-        for axis in axes:
-            table = table.removescope(axis) if axis in table.scopekeys else table
-            others = [other.removescope(axis) if axis in other.scopekeys else other for other in others]
+        for noncoreaxis in noncoreaxes:
+            table = table.removescope(noncoreaxis) if noncoreaxis in table.scopekeys else table
+            others = [other.removescope(noncoreaxis) if noncoreaxis in other.scopekeys else other for other in others]
         
         assert all([table.variables == other.variables for other in others])
             
