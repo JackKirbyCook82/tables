@@ -19,7 +19,7 @@ from tables.adapters import flattable_transform, arraytable_inversion, arraytabl
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
-__all__ = ['Scale', 'Reduction', 'WeightReduction', 'Cumulate', 'Uncumulate', 'Consolidate', 'Unconsolidate', 'Moving', 'GroupBy', 'Interpolate', 'Inversion']
+__all__ = ['Boundary', 'Scale', 'Reduction', 'WeightReduction', 'Cumulate', 'Uncumulate', 'Consolidate', 'Unconsolidate', 'Moving', 'GroupBy', 'Interpolate', 'Inversion']
 __copyright__ = "Copyright 2018, Jack Kirby Cook"
 __license__ = ""
 
@@ -128,7 +128,7 @@ class WeightReduction:
 
 
 @Transformation.register(required=('how', 'by', 'period'),
-                         xarray_funcs={'average':xar.moving_average, 'summation':xar.moving_summation},
+                         xarray_funcs={'average':xar.moving_average, 'summation':xar.moving_summation, 'difference':xar.moving_difference},
                          varray_funcs={'summation':var.moving_summation, 'couple':var.moving_couple})
 class Moving:
     def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, by, period, **kwargs):
@@ -188,7 +188,18 @@ class Unconsolidate:
         xarray.name = dataarray.name
         axisvariable = headertype(varray)        
         return xarray, datavariable, axisvariable
-
+    
+    
+@Transformation.register(varray_funcs={'boundary':var.boundary})
+class Boundary:
+    def execute(self, dataarray, *args, axis, datavariable, axisvariable, **kwargs):
+        varray = getheader(dataarray, axis, axisvariable)
+        varray = self.varray_funcs['boundary'](varray, *args, **kwargs)
+        xarray = setheader(dataarray, axis, varray)
+        xarray.name = dataarray.name
+        axisvariable = headertype(varray)        
+        return xarray, datavariable, axisvariable   
+    
 
 @Transformation.register(required=('how', 'agg',), xarray_funcs={'groupby':xar.groupby}, 
                          varray_funcs={'groups':var.groupby_bins, 'contains':var.groupby_contains, 'overlaps':var.groupby_overlaps})
@@ -202,7 +213,7 @@ class GroupBy:
         return xarray, datavariable, axisvariable        
 
     
-@Transformation.register(required=('how',), defaults={'how':'linear', 'fill':{}, 'smoothing':{}},
+@Transformation.register(required=('how',), defaults={'how':'linear', 'fill':None},
                          xarray_funcs={'interpolate':xar.interpolate}, varray_funcs={'factory':var.varray_fromvalues})
 class Interpolate:
     def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, values, **kwargs):
@@ -212,12 +223,12 @@ class Interpolate:
         varray = self.varray_funcs['factory'](values, *args, variable=axisvariable, how=how, **kwargs)
         xarray = setheader(xarray, axis, varray)
         xarray.name = dataarray.name
-        return xarray
+        return xarray, datavariable, axisvariable
 
 
 class Inversion(object):
     required=('how',)
-    defaults = {'how':'linear', 'fill':{}, 'smoothing':{}}
+    defaults = {'how':'linear', 'fill':None}
     xarray_funcs={'inversion':nar.inversion, 'factory':xar.xarray_fromvalues}
     varray_funcs={'factory':var.varray_fromvalues}
 

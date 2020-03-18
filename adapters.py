@@ -113,7 +113,7 @@ def arraytable_combination(function):
         tablename = table.name
         VariablesClass = tables[0].variables.__class__  
         variablesname = tables[0].variables.name        
-        
+
         axes = [item for item in [*_aslist(axis), *_aslist(axes)] if item is not None]
         newxarray, newvariables = function(table, others, *args, axes=axes, **kwargs)        
         try: newdataset = newxarray.to_dataset()
@@ -130,7 +130,7 @@ def arraytable_combine(function):
         assert table.layers == 1
         assert all([other.layers == 1 for other in others])
         assert len(_aslist(axes)) == 1  
-        
+
         datakey, otherdatakeys = table.datakeys[0], [other.datakeys[0] for other in others]
         axis = _aslist(axes)[0]
         
@@ -139,8 +139,8 @@ def arraytable_combine(function):
         assert all([table.variables == other.variables for other in others])
         
         others = [align_arraytables(table, other, *args, method='outer', **kwargs)[-1] for other in others]         
-        dataarray, otherdataarrays = table.dataarrays[datakey], [list(table.dataarrays.values())[0] for other in others]
-        newdataarray = function(dataarray, otherdataarrays, *args, **kwargs)
+        dataarray, otherdataarrays = table.dataarrays[datakey], [list(other.dataarrays.values())[0] for other in others]
+        newdataarray = function(dataarray, otherdataarrays, *args, axis=axis, **kwargs)
         newvariables = table.variables.copy()
         
         return newdataarray, newvariables
