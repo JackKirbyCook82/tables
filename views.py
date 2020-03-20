@@ -15,7 +15,7 @@ from utilities.strings import uppercase
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
-__all__ = ['ArrayTableView', 'FlatTableView']
+__all__ = ['ArrayTableView', 'FlatTableView', 'HistogramTableView']
 __copyright__ = "Copyright 2018, Jack Kirby Cook"
 __license__ = ""
 
@@ -27,7 +27,6 @@ _SCOPEFORMAT = '{key}: {values}'
 _VARIABLEFORMAT = 'VARIABLE[{index}] = {key}: {name}' 
 _STRUCTUREFORMAT = 'Layers={layers}, Dims={dims}, Shape={shape}, Fields={fields}'
 _DATAFRAMEFORMAT = 'DATA: \n{values}'
-
 
 _flatten = lambda nesteditems: [item for items in nesteditems for item in items]
 _headerkeys = lambda dataarray: tuple(dataarray.dims)
@@ -58,60 +57,64 @@ class TableViewBase(ABC):
         return cls
      
     def __init__(self, table): self.__table = table   
-    def __str__(self): return '\n'.join([self.frame, '\n\n'.join([self.namestring, *self.strings, self.variablestrings, self.structurestring]), self.frame])    
+    def __str__(self): return '\n'.join([self.frame, '\n\n'.join([self.namestring, *self.strings]), self.frame])    
     def __call__(self, *args, **kwargs): print(str(self))
         
     @property
-    def frame(self): return self.framechar * self.framewidth
-    @property
-    def variablestrings(self): return '\n'.join([_variablestring(variableindex, variablekey, variablevalue) for variableindex, variablekey, variablevalue in zip(range(len(self.__table.variables)), self.__table.variables.keys(), self.__table.variables.values())])        
+    def frame(self): return self.framechar * self.framewidth 
     @property
     def namestring(self): return _namestring(self.__table.__class__.__name__, self.__table.name)
-    @property    
-    def structurestring(self): return _structurestring(Structure(self.__table.layers, self.__table.dims, self.__table.shape))       
-       
+    @property
+    def table(self): return self.__table
     @abstractmethod
     def strings(self): pass
 
 
 class ArrayTableView(TableViewBase):
-    def __init__(self, arraytable):
-        dataarrays = ODict([(datakey, arraytable[datakey].dropallna().sortall(ascending=True).dataarrays[datakey]) for datakey in arraytable.datakeys])   
-        self.__datastrings = ODict([(datakey, _arraystring(dataindex, datakey, dataarray.dims, dataarray.values)) for dataindex, datakey, dataarray in zip(range(len(dataarrays)), dataarrays.keys(), dataarrays.values())])
-        self.__headerstrings = ODict([(datakey, '\n'.join([_headerstring(dimkey, dataarray.coords[dimkey].values) for dimkey in _headerkeys(dataarray)])) for datakey, dataarray in dataarrays.items()])
-        self.__scopestrings = {datakey:'\n'.join([_scopestring(nondimkey, dataarray.coords[nondimkey].values) for nondimkey in _scopekeys(dataarray)]) for datakey, dataarray in dataarrays.items()}
-        assert self.__datastrings.keys() == self.__headerstrings.keys() == self.__scopestrings.keys()
-        self.__datakeys = list(self.__datastrings.keys()) 
-        super().__init__(arraytable)
-
+    @property
+    def datakeys(self): return list(self.dataarrays.keys()) 
+    @property
+    def dataarrays(self): return ODict([(datakey, self.table[datakey].dropallna().sortall(ascending=True).dataarrays[datakey]) for datakey in self.table.datakeys])   
+    @property
+    def datastrings(self): return ODict([(datakey, _arraystring(dataindex, datakey, dataarray.dims, dataarray.values)) for dataindex, datakey, dataarray in zip(range(len(self.dataarrays)), self.dataarrays.keys(), self.dataarrays.values())])
+    @property
+    def headerstrings(self): return ODict([(datakey, '\n'.join([_headerstring(dimkey, dataarray.coords[dimkey].values) for dimkey in _headerkeys(dataarray)])) for datakey, dataarray in self.dataarrays.items()])
+    @property
+    def scopestrings(self): return {datakey:'\n'.join([_scopestring(nondimkey, dataarray.coords[nondimkey].values) for nondimkey in _scopekeys(dataarray)]) for datakey, dataarray in self.dataarrays.items()}
+    @property
+    def variablestrings(self): return '\n'.join([_variablestring(variableindex, variablekey, variablevalue) for variableindex, variablekey, variablevalue in zip(range(len(self.table.variables)), self.table.variables.keys(), self.table.variables.values())])        
+    @property    
+    def structurestring(self): return _structurestring(Structure(self.table.layers, self.table.dims, self.table.shape))              
     @property
     def strings(self): 
-        function = lambda datakey: [item for item in (self.__datastrings[datakey], self.__headerstrings[datakey], self.__scopestrings[datakey]) if item]
-        return _flatten([function(datakey) for datakey in self.__datakeys])
-       
+        datastrings, headerstrings, scopestrings = self.datastrings, self.headerstrings, self.scopestrings
+        contentstrings = _flatten([(datastrings[datakey], headerstrings[datakey], scopestrings[datakey]) for datakey in self.datakeys])
+        contentstrings = [item for item in contentstrings if item]
+        return [*contentstrings, self.variablestrings, self.structurestring]
+        
 
 class FlatTableView(TableViewBase):
-    def __init__(self, flattable):
-        dataframe = flattable.dataframe
-        self.__dataframestrings = _dataframestring(dataframe)
-        super().__init__(flattable)
-
     @property
-    def strings(self): return [self.__dataframestrings]
+    def variablestrings(self): return '\n'.join([_variablestring(variableindex, variablekey, variablevalue) for variableindex, variablekey, variablevalue in zip(range(len(self.__table.variables)), self.__table.variables.keys(), self.__table.variables.values())])        
+    @property    
+    def structurestring(self): return _structurestring(Structure(self.table.layers, self.table.dims, self.table.shape))       
+    @property
+    def strings(self): return [*_dataframestring(self.table.dataframe), self.variablestrings, self.structurestring]
 
 
+class HistogramTableView(TableViewBase):
+    @property
+    def strings(self): pass
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        

@@ -20,6 +20,8 @@ from utilities.xarrays import xarray_fromdataframe, standardize, absolute
 from utilities.dispatchers import clskey_singledispatcher as keydispatcher
 from utilities.strings import uppercase
 
+from tables.histograms import Histogram
+
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
 __all__ = ['ArrayTable', 'FlatTable']
@@ -42,7 +44,6 @@ _replacestd = lambda dataarray, value, std: xr.where(absolute(standardize(dataar
 
 class TableBase(ABC):
     View = lambda table: None
-    
     @classmethod
     def factory(cls, view=None): 
         if view: cls.View = view
@@ -64,7 +65,7 @@ class TableBase(ABC):
     def __str__(self):
         view = self.View(self)
         if view: return str(view)
-        else: return'\n\n'.join([uppercase(self.name, withops=True), str(self.data), str(self.variables)])
+        else: return '\n\n'.join([uppercase(self.name, withops=True), str(self.data), str(self.variables)])
     
     def __len__(self): return self.dims 
     def __eq__(self, other):
@@ -390,12 +391,21 @@ class ArrayTable(TableBase):
         for datakey in self.datakeys: dataframe[datakey] = dataframe[datakey].apply(lambda x: str(self.variables[datakey](x)))
         return FlatTable(dataframe, variables=self.variables.copy(), name=self.name)     
 
-
-
-
+    def tohistogram(self, *args, **kwargs):
+        assert all([self.layers == 1, self.dims == 1])
+        axisvalues, datavalues = self.headers[self.headerkeys[0]], self.arrays[self.datakeys[0]]
+        axisdatatype = self.variables[self.headerkeys[0]].datatype
+        indexvalues = self.__createindex(axisdatatype, *args, axisvalues=axisvalues, **kwargs)
+        return Histogram(axis=axisvalues, index=indexvalues, data=datavalues, scope=self.scope, name=self.name, axisname=self.headerkeys[0], dataname=self.datakeys[0])
     
-    
-    
+    @keydispatcher
+    def __createindex(self, datatype, axisvalues, *args, **kwargs): raise KeyError(datatype)
+    @__createindex.register('num')
+    def __createindexNum(self, axisvalues, *args, **kwargs): return np.array([self.variables[self.headerkeys[0]].fromstr(axisvalue).value for axisvalue in axisvalues])
+    @__createindex.register('range')
+    def __createindexRange(self, axisvalues, *args, how, **kwargs): return np.array([self.variables[self.headerkeys[0]].fromstr(axisvalue).consolidate(*args, how=how, **kwargs) for axisvalue in axisvalues])
+    @__createindex.register('category')
+    def __createindexCategory(self, axisvalues, *args, mapping={}, **kwargs): return np.array([i for i in range(len(axisvalues))])
     
     
     

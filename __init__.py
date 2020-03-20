@@ -10,8 +10,9 @@ import pandas as pd
 import numpy as np
 import json
 
-from tables.views import ArrayTableView, FlatTableView
-from tables.tables import ArrayTable, FlatTable
+from tables.views import ArrayTableView, FlatTableView, HistogramTableView
+from tables.tables import ArrayTable, FlatTable 
+from tables.histograms import HistogramTable, Histogram
 import tables.combinations as combinations
 import tables.operations as operations
 import tables.transformations as transformations
@@ -19,7 +20,7 @@ import tables.processors as processors
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
-__all__ = ['ArrayTable', 'FlatTable', 'set_options', 'get_option', 'show_options', 'combinations', 'operations', 'transformations', 'processors']
+__all__ = ['ArrayTable', 'FlatTable', 'HistogramTable', 'Histogram', 'set_options', 'get_option', 'show_options', 'combinations', 'operations', 'transformations', 'processors']
 __copyright__ = "Copyright 2018, Jack Kirby Cook"
 __license__ = ""
 
@@ -35,10 +36,13 @@ def apply_options():
 
     global ArrayTableView, ArrayTable
     global FlatTableView, FlatTable
+    global HistogramTableView, HistogramTable
     ArrayTableView = ArrayTableView.factory(framechar=_OPTIONS['framechar'], framewidth=_OPTIONS['linewidth'])
     FlatTableView = FlatTableView.factory(framechar=_OPTIONS['framechar'], framewidth=_OPTIONS['linewidth'])
+    HistogramTableView = HistogramTableView.factory(framechar=_OPTIONS['framechar'], framewidth=_OPTIONS['linewidth'])
     ArrayTable = ArrayTable.factory(view=ArrayTableView)
     FlatTable = FlatTable.factory(view=FlatTableView)
+    HistogramTable = HistogramTable.factory(view=HistogramTableView)
 
 
 def set_options(**kwargs):
