@@ -8,11 +8,12 @@ Created on Mon August 19 2019
 
 import pandas as pd
 import numpy as np
+from scipy.linalg import cholesky, eigh
 import json
+from collections import OrderedDict as ODict
 
-from tables.views import ArrayTableView, FlatTableView, HistogramTableView
-from tables.tables import ArrayTable, FlatTable 
-from tables.histograms import HistogramTable, Histogram
+from tables.views import ArrayTableView, FlatTableView, HistTableView
+from tables.tables import ArrayTable, FlatTable, HistTable
 import tables.combinations as combinations
 import tables.operations as operations
 import tables.transformations as transformations
@@ -20,7 +21,7 @@ import tables.processors as processors
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
-__all__ = ['ArrayTable', 'FlatTable', 'HistogramTable', 'Histogram', 'set_options', 'get_option', 'show_options', 'combinations', 'operations', 'transformations', 'processors']
+__all__ = ['ArrayTable', 'FlatTable', 'HistTable', 'HistCollection', 'set_options', 'get_option', 'show_options', 'combinations', 'operations', 'transformations', 'processors']
 __copyright__ = "Copyright 2018, Jack Kirby Cook"
 __license__ = ""
 
@@ -36,13 +37,13 @@ def apply_options():
 
     global ArrayTableView, ArrayTable
     global FlatTableView, FlatTable
-    global HistogramTableView, HistogramTable
+    global HistTableView, HistTable
     ArrayTableView = ArrayTableView.factory(framechar=_OPTIONS['framechar'], framewidth=_OPTIONS['linewidth'])
     FlatTableView = FlatTableView.factory(framechar=_OPTIONS['framechar'], framewidth=_OPTIONS['linewidth'])
-    HistogramTableView = HistogramTableView.factory(framechar=_OPTIONS['framechar'], framewidth=_OPTIONS['linewidth'])
+    HistTableView = HistTableView.factory(framechar=_OPTIONS['framechar'], framewidth=_OPTIONS['linewidth'])
     ArrayTable = ArrayTable.factory(view=ArrayTableView)
     FlatTable = FlatTable.factory(view=FlatTableView)
-    HistogramTable = HistogramTable.factory(view=HistogramTableView)
+    HistTable = HistTable.factory(view=HistTableView)
 
 
 def set_options(**kwargs):
@@ -57,9 +58,38 @@ def show_options():
     print('Table Options {}\n'.format(optionstrings))
 
 
+class HistCollection(ODict):       
+    def __init__(self, *histtables):
+        assert all([isinstance(histtable, HistTable) for histtable in histtables])
+        super().__init__([(histtable.name, histtable) for histtable in histtables])
+        self.__correlationmatrix = np.zeros((len(self), len(self)))
+    
+    def __call__(self, size, *args, **kwargs): 
+        sample_matrix = self.sample_matrix(size, *args, **kwargs)
+        return {key:values for key, values in zip(self.keys(), sample_matrix)}
+        
+    def sample_matrix(self, size, *args, method='cholesky', **kwargs):
+        sample_matrix = np.array([histtable.sample(size) for histtable in self.values()]) 
+        if method == 'cholesky':
+            correlation_matrix = cholesky(self.__correlationmatrix, lower=True)
+        elif method == 'eigen':
+            evals, evecs = eigh(self.__correlationmatrix)
+            correlation_matrix = np.dot(evecs, np.diag(np.sqrt(evals)))
+        else: raise ValueError(method)
+        return np.dot(correlation_matrix, sample_matrix)        
 
 
-
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
 
 
 

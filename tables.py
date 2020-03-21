@@ -12,25 +12,26 @@ import pandas as pd
 import openpyxl
 import numpy as np
 import xarray as xr
+from scipy import stats
 from numbers import Number
 from collections import OrderedDict as ODict
+from collections import namedtuple as ntuple
 
 from utilities.dataframes import dataframe_fromxarray
 from utilities.xarrays import xarray_fromdataframe, standardize, absolute
 from utilities.dispatchers import clskey_singledispatcher as keydispatcher
 from utilities.strings import uppercase
 
-from tables.histograms import Histogram
-
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
-__all__ = ['ArrayTable', 'FlatTable']
+__all__ = ['ArrayTable', 'FlatTable', 'HistTable']
 __copyright__ = "Copyright 2018, Jack Kirby Cook"
 __license__ = ""
 
 
-_AGGREGATIONS = {'sum':np.sum, 'avg':np.mean, 'max':np.max, 'min':np.min}
+AGGREGATIONS = {'sum':np.sum, 'avg':np.mean, 'max':np.max, 'min':np.min}
 
+_normalize = lambda x: x / np.sum(x)
 _union = lambda x, y: list(set(x) | set(y))
 _intersection = lambda x, y: list(set(x) & set(y))
 _aslist = lambda items: [items] if not isinstance(items, (list, tuple)) else list(items)
@@ -40,6 +41,13 @@ _replacenan = lambda dataarray, value: xr.where(~np.isnan(dataarray), dataarray,
 _replaceinf = lambda dataarray, value: xr.where(~np.isinf(dataarray), dataarray, value)
 _replaceneg = lambda dataarray, value: xr.where(dataarray >= 0, dataarray, value)
 _replacestd = lambda dataarray, value, std: xr.where(absolute(standardize(dataarray)) < std, dataarray, value)
+
+
+class HistArray(ntuple('HistArray', 'weightskey weights axiskey axis scope')):
+    def __new__(cls, weightskey, weights, axiskey, axis, scope):
+        assert len(weights) == len(axis)
+        assert isinstance(scope, dict)
+        return super().__new__(cls, weightskey, weights, axiskey, axis, scope)
 
 
 class TableBase(ABC):
@@ -67,12 +75,11 @@ class TableBase(ABC):
         if view: return str(view)
         else: return '\n\n'.join([uppercase(self.name, withops=True), str(self.data), str(self.variables)])
     
-    def __len__(self): return self.dims 
+    def __ne__(self, other): return not self.__eq__(other)
     def __eq__(self, other):
         assert isinstance(self, type(other))
         return all([self.data == other.data, self.variables == other.variables])
-    def __ne__(self, other): return not self.__eq__(other)
-
+    
     @abstractmethod
     def layers(self): pass
     @abstractmethod
@@ -87,7 +94,74 @@ class TableBase(ABC):
     
     @abstractmethod
     def keys(self): pass
+ 
+
+class HistTable(TableBase):
+    def __call__(self, size): return self.__histogram.rvs(size=(1, size))[0]    
+    def __init__(self, data, *args, variables, **kwargs):
+        assert isinstance(data, HistArray) 
+        super().__init__(data, *args, variables=variables, **kwargs)
+        self.__index = kwargs.get('index', )
+        self.__index = self.__createIndex(variables[self.axiskey].datatype, *args, **kwargs)
+        self.__histogram = stats.rv_discrete(name=self.name, values=(self.__index, _normalize(self.data.weights)))
+
+    @keydispatcher
+    def __createIndex(self, datatype, *args, **kwargs): raise KeyError(datatype)
+    @__createIndex.register('num')
+    def __createIndexNum(self,  *args, **kwargs): return np.array([self.variables[self.axiskey].fromstr(axisvalue).value for axisvalue in self.axis])
+    @__createIndex.register('range')
+    def __createIndexRange(self, *args, how, **kwargs): return np.array([self.variables[self.axiskey].fromstr(axisvalue).consolidate(*args, how=how, **kwargs).value for axisvalue in self.axis])
+    @__createIndex.register('category')
+    def __createIndexCategory(self, *args, **kwargs): return np.array([i for i in range(len(self.axis))])
+
+    @property
+    def histarray(self): return self.data
+    @property
+    def weights(self): return self.data.weights
+    @property
+    def axis(self): return self.data.axis
+    @property
+    def index(self): return self.__index    
+    @property
+    def scope(self): return self.data.scope
+    @property
+    def histogram(self): return self.__histogram
     
+    @property
+    def weightskey(self): return self.data.weightskey
+    @property
+    def axiskey(self): return self.data.axiskey
+    @property
+    def scopekeys(self): return tuple(self.data.scope.keys())
+    @property
+    def keys(self): return (self.data.weightskey, self.data.axiskey, *self.data.scope.keys())
+
+    @property
+    def layers(self): return 1
+    @property
+    def dims(self): return 2
+    @property
+    def shape(self): return (2, len(self.data.weights))
+    
+    def __len__(self): return len(self.data.weights)   
+    def __getitem__(self, index): return {index:axis for index, axis in zip(self.index, self.axis)}[index]    
+    
+    def retag(self, **tags): 
+        data = HistArray()
+        variables, scope = self.variables.copy(), self.scope.copy()
+        for oldkey, newkey in tags.items(): variables[newkey], scope[newkey] = variables[oldkey], scope[oldkey]
+        data = HistArray(tags.get(self.data.weightskey, self.data.weightskey), self.data.weights, tags.get(self.data.axiskey, self.data.axiskey), self.data.axis, scope)
+        return self.__class__(data, variables=variables, name=self.name)
+
+    @property
+    def array(self): return np.array([np.full(data, index) for index, data in zip(np.nditer(self.index, np.nditer(self.weights)))]).flatten()        
+    def mean(self): return self.histogram.mean()
+    def median(self): return self.histogram.median()
+    def std(self): return self.histogram.std()
+    def rstd(self): return self.std() / self.mean()
+    def skew(self): return stats.skew(self.array)
+    def kurtosis(self): return stats.kurtosis(self.array)    
+
 
 class FlatTable(TableBase):
     def __init__(self, data, *args, variables, **kwargs):
@@ -104,6 +178,8 @@ class FlatTable(TableBase):
     def series(self): return self.data.squeeze()
     @property
     def columns(self): return self.data.columns
+    @property
+    def keys(self): return tuple(self.dataframe.columns)
 
     @property
     def layers(self): return 1
@@ -111,10 +187,8 @@ class FlatTable(TableBase):
     def dims(self): return self.dataframe.ndim
     @property
     def shape(self): return self.dataframe.shape
+    def __len__(self): return self.dims 
     
-    @property
-    def keys(self): return tuple(self.dataframe.columns)
-
     def retag(self, **tags): 
         dataframe = self.dataframe.rename(columns=tags, inplace=True)
         variables = self.variables.copy()
@@ -160,7 +234,7 @@ class FlatTable(TableBase):
         dataframe = self.dataframe.copy()
         for item in index: dataframe[item] = dataframe[item].apply(lambda x: self.variables[item].fromstr(x))
         for value in values: dataframe[value] = dataframe[value].apply(lambda x: self.variables[value].fromstr(x).value)
-        aggs = {value:_AGGREGATIONS[aggkey] for value, aggkey in aggs.items() if value in values}
+        aggs = {value:AGGREGATIONS[aggkey] for value, aggkey in aggs.items() if value in values}
         pivoted = dataframe.pivot_table(index=index, columns=columns, values=values, aggfunc=aggs)
         pivoted = pivoted.sort_index(ascending=True)
         return pivoted
@@ -220,6 +294,7 @@ class ArrayTable(TableBase):
     def dims(self): return len(self.dataset.dims)
     @property
     def shape(self): return tuple(self.dataset.sizes.values())
+    def __len__(self): return self.dims 
     
     @property
     def datakeys(self): return tuple(self.dataset.data_vars.keys())
@@ -393,21 +468,8 @@ class ArrayTable(TableBase):
 
     def tohistogram(self, *args, **kwargs):
         assert all([self.layers == 1, self.dims == 1])
-        axisvalues, datavalues = self.headers[self.headerkeys[0]], self.arrays[self.datakeys[0]]
-        axisdatatype = self.variables[self.headerkeys[0]].datatype
-        indexvalues = self.__createindex(axisdatatype, *args, axisvalues=axisvalues, **kwargs)
-        return Histogram(axis=axisvalues, index=indexvalues, data=datavalues, scope=self.scope, name=self.name, axisname=self.headerkeys[0], dataname=self.datakeys[0])
+        axisvalues, weightvalues = self.headers[self.headerkeys[0]], self.arrays[self.datakeys[0]]
+        histarray = HistArray(self.datakeys[0], weightvalues, self.headerkeys[0], axisvalues, self.scope)
+        return HistTable(histarray, *args, name=self.name, variables=self.variables, **kwargs)
     
-    @keydispatcher
-    def __createindex(self, datatype, axisvalues, *args, **kwargs): raise KeyError(datatype)
-    @__createindex.register('num')
-    def __createindexNum(self, axisvalues, *args, **kwargs): return np.array([self.variables[self.headerkeys[0]].fromstr(axisvalue).value for axisvalue in axisvalues])
-    @__createindex.register('range')
-    def __createindexRange(self, axisvalues, *args, how, **kwargs): return np.array([self.variables[self.headerkeys[0]].fromstr(axisvalue).consolidate(*args, how=how, **kwargs) for axisvalue in axisvalues])
-    @__createindex.register('category')
-    def __createindexCategory(self, axisvalues, *args, mapping={}, **kwargs): return np.array([i for i in range(len(axisvalues))])
-    
-    
-    
-    
-    
+
