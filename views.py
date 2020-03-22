@@ -28,7 +28,8 @@ _VARIABLEFORMAT = 'VARIABLE[{index}] = {key}: {name}'
 _STRUCTUREFORMAT = 'Layers={layers}, Dims={dims}, Shape={shape}, Fields={fields}'
 _DATAFRAMEFORMAT = 'DATA: \n{values}'
 _WEIGHTSFORMAT = 'WEIGHTS = {key}: \n{values}'
-_AXISFORMAT = 'AXIS = {key}: \n{values}'
+_AXISFORMAT = 'AXIS = {key}: \n{values}\n{index}'
+
 
 _flatten = lambda nesteditems: [item for items in nesteditems for item in items]
 _filterempty = lambda items: [item for item in items if item]
@@ -42,8 +43,9 @@ _scopestring = lambda scopekey, scopevalues: _SCOPEFORMAT.format(key=uppercase(s
 _structurestring = lambda structure: str(structure)
 _variablestring = lambda variableindex, variablekey, variablevalue: _VARIABLEFORMAT.format(index=variableindex, key=uppercase(variablekey, withops=True), name=variablevalue.name())
 _dataframestring = lambda dataframe: _DATAFRAMEFORMAT.format(values=dataframe)
-_weightstring = lambda weightskey, weights: _WEIGHTSFORMAT.format(key=weightskey, values=weights)
-_axisstring = lambda axiskey, axis: _AXISFORMAT.format(key=axiskey, values=axis)
+_weightstring = lambda weightskey, weights: _WEIGHTSFORMAT.format(key=uppercase(weightskey), values=weights)
+_axisstring = lambda axiskey, axis, index: _AXISFORMAT.format(key=uppercase(axiskey), values=axis, index=index)
+
 
 
 class Structure(ntuple('Structure', 'layers dims shape')):
@@ -83,7 +85,7 @@ class HistTableView(TableViewBase):
     @property
     def weightstrings(self): return _weightstring(self.table.weightskey, self.table.weights)
     @property
-    def axisstrings(self): return _axisstring(self.table.axiskey, self.table.axis)
+    def axisstrings(self): return _axisstring(self.table.axiskey, self.table.axis, self.table.index)
     @property
     def scopestrings(self): return '\n'.join([_scopestring(scopekey=scopekey, scopevalues=scopevalues) for scopekey, scopevalues in self.table.scope.items()])
     @property

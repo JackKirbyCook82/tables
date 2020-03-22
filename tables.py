@@ -100,20 +100,29 @@ class HistTable(TableBase):
     def __call__(self, size): return self.__histogram.rvs(size=(1, size))[0]    
     def __init__(self, data, *args, variables, **kwargs):
         assert isinstance(data, HistArray) 
-        super().__init__(data, *args, variables=variables, **kwargs)
-        self.__index = kwargs.get('index', )
-        self.__index = self.__createIndex(variables[self.axiskey].datatype, *args, **kwargs)
+        index = self.__createIndex(variables[data.axiskey].datatype, data.axiskey, data.axis, variables[data.axiskey], *args, **kwargs)
+        index, axis, weights = self.__zippedsort(index, data.axis, data.weights)
+        data = HistArray(data.weightskey, weights, data.axiskey, axis, data.scope)        
+        super().__init__(data, *args, variables=variables, **kwargs)       
+        self.__index = index
         self.__histogram = stats.rv_discrete(name=self.name, values=(self.__index, _normalize(self.data.weights)))
 
+    @staticmethod
+    def __zippedsort(index, axis, weights):
+        content = [(i, a, w) for i, a, w in sorted(zip(index, axis, weights), key=lambda zipped: zipped[0])]
+        function = lambda x: [y[x] for y in content]
+        index, axis, weights = np.array(function(0)), function(1), np.array(function(2))        
+        return index, axis, weights 
+    
     @keydispatcher
-    def __createIndex(self, datatype, *args, **kwargs): raise KeyError(datatype)
+    def __createIndex(self, datatype, axiskey, axisvariable, *args, **kwargs): raise KeyError(datatype)
     @__createIndex.register('num')
-    def __createIndexNum(self,  *args, **kwargs): return np.array([self.variables[self.axiskey].fromstr(axisvalue).value for axisvalue in self.axis])
+    def __createIndexNum(self, axiskey, axisvalues, axisvariable, *args, **kwargs): return np.array([axisvariable.fromstr(axisvalue).value for axisvalue in axisvalues])
     @__createIndex.register('range')
-    def __createIndexRange(self, *args, how, **kwargs): return np.array([self.variables[self.axiskey].fromstr(axisvalue).consolidate(*args, how=how, **kwargs).value for axisvalue in self.axis])
+    def __createIndexRange(self, axiskey, axisvalues, axisvariable, *args, how, **kwargs): return np.array([axisvariable.fromstr(axisvalue).consolidate(*args, how=how, **kwargs).value for axisvalue in axisvalues])
     @__createIndex.register('category')
-    def __createIndexCategory(self, *args, **kwargs): return np.array([i for i in range(len(self.axis))])
-
+    def __createIndexCategory(self, axiskey, axisvalues, axisvariable, *args, index, **kwargs): return np.array([index[axisvalue] for axisvalue in axisvalues])
+    
     @property
     def histarray(self): return self.data
     @property
@@ -144,8 +153,11 @@ class HistTable(TableBase):
     def shape(self): return (2, len(self.data.weights))
     
     def __len__(self): return len(self.data.weights)   
-    def __getitem__(self, index): return {index:axis for index, axis in zip(self.index, self.axis)}[index]    
-    
+    def __getitem__(self, index): return {index:axis for index, axis in zip(self.index, self.axis)}[index]        
+    def __iter__(self): 
+        for axis, index, weight in zip(self.axis, self.index, self.weights):
+            yield axis, index, weight
+            
     def retag(self, **tags): 
         data = HistArray()
         variables, scope = self.variables.copy(), self.scope.copy()
@@ -154,7 +166,7 @@ class HistTable(TableBase):
         return self.__class__(data, variables=variables, name=self.name)
 
     @property
-    def array(self): return np.array([np.full(data, index) for index, data in zip(np.nditer(self.index, np.nditer(self.weights)))]).flatten()        
+    def array(self): return np.array([np.full(weight, index) for index, weight in zip(self.index, self.weights)]).flatten()        
     def mean(self): return self.histogram.mean()
     def median(self): return self.histogram.median()
     def std(self): return self.histogram.std()
@@ -209,8 +221,7 @@ class FlatTable(TableBase):
     def drop(self, *columns): return self.select(*[column for column in self.dataframe.columns if column not in columns])
     
     @keydispatcher
-    def createdata(self, key, *args, **kwargs): raise KeyError(key)
-    
+    def createdata(self, key, *args, **kwargs): raise KeyError(key)    
     @createdata.register('single')
     def __createdata_fromcolumn(self, key, *args, axis, function, **kwargs):      
         dataframe, variables = self.dataframe.copy(), self.variables.copy()
@@ -219,7 +230,6 @@ class FlatTable(TableBase):
         variables[key] = type(dataframe[key].loc[0])
         dataframe[key] = dataframe[key].apply(str)
         return dict(data=dataframe, variables=variables, name=self.name)
-
     @createdata.register('multiple')
     def __createdata_fromcolumns(self, key, *args, axes, function, **kwargs):
         dataframe, variables = self.dataframe.copy(), self.variables.copy()
@@ -397,8 +407,7 @@ class ArrayTable(TableBase):
         return self.__class__(newdataset, variables=self.variables.copy(), name=self.name)   
 
     @keydispatcher
-    def fillextreme(self, method, *args, threshold, fill=None, **fillvalues): raise KeyError(method)
-        
+    def fillextreme(self, method, *args, threshold, fill=None, **fillvalues): raise KeyError(method)        
     @fillextreme.register('stdev', 'std')
     def __fillextreme_stdev(self, *args, threshold, fill=None, **fillvalues):
         assert isinstance(threshold, Number)

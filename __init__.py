@@ -63,13 +63,14 @@ class HistCollection(ODict):
         assert all([isinstance(histtable, HistTable) for histtable in histtables])
         super().__init__([(histtable.name, histtable) for histtable in histtables])
         self.__correlationmatrix = np.zeros((len(self), len(self)))
+        np.fill_diagonal(self.__correlationmatrix, 1)
     
     def __call__(self, size, *args, **kwargs): 
         sample_matrix = self.sample_matrix(size, *args, **kwargs)
-        return {key:values for key, values in zip(self.keys(), sample_matrix)}
+        return sample_matrix
         
     def sample_matrix(self, size, *args, method='cholesky', **kwargs):
-        sample_matrix = np.array([histtable.sample(size) for histtable in self.values()]) 
+        sample_matrix = np.array([histtable(size) for histtable in self.values()]) 
         if method == 'cholesky':
             correlation_matrix = cholesky(self.__correlationmatrix, lower=True)
         elif method == 'eigen':
