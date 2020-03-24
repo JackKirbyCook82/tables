@@ -9,7 +9,7 @@ Created on Tues Aug 27 2019
 from functools import update_wrapper
 import xarray as xr
 
-from tables.adapters import arraytable_combine, arraytable_layer, arraytable_reconcile
+from tables.adapters import arraytable_combine, arraytable_layer
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
@@ -75,17 +75,7 @@ def layer(xarray, other, *args, **kwargs):
     return newdataset
 
 
-@arraytable_reconcile
-@combination
-def reconcile(dataarray, other, *args, method, **kwargs):
-    function = lambda x, y: _RECONCILIATION[method](x, y) 
-    dataarray, other = xr.align(dataarray, other, join='exact', copy=True)
-    newdataarray = function(dataarray, other)
-    return newdataarray
 
-
-    
-    
     
 
 

@@ -64,11 +64,16 @@ class HistCollection(ODict):
         super().__init__([(histtable.name, histtable) for histtable in histtables])
         self.__correlationmatrix = np.zeros((len(self), len(self)))
         np.fill_diagonal(self.__correlationmatrix, 1)
+      
+    @property
+    def concepts(self): return ODict([(histogram.axiskey, histogram.concepts) for histogram in self.values()])                    
+    @property
+    def sample_keys(self): return [histogram.axiskey for histogram in self.values()]
     
     def __call__(self, size, *args, **kwargs): 
-        sample_matrix = self.sample_matrix(size, *args, **kwargs)
-        return sample_matrix
-        
+        for sample_values in self.sample_matrix(size, *args, **kwargs):
+            yield {key:value for key, value in zip(self.sample_keys, sample_values)}
+
     def sample_matrix(self, size, *args, method='cholesky', **kwargs):
         sample_matrix = np.array([histtable(size) for histtable in self.values()]) 
         if method == 'cholesky':
@@ -77,7 +82,7 @@ class HistCollection(ODict):
             evals, evecs = eigh(self.__correlationmatrix)
             correlation_matrix = np.dot(evecs, np.diag(np.sqrt(evals)))
         else: raise ValueError(method)
-        return np.dot(correlation_matrix, sample_matrix)        
+        return np.dot(correlation_matrix, sample_matrix).transpose()        
 
 
     

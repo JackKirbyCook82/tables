@@ -43,11 +43,11 @@ _replaceneg = lambda dataarray, value: xr.where(dataarray >= 0, dataarray, value
 _replacestd = lambda dataarray, value, std: xr.where(absolute(standardize(dataarray)) < std, dataarray, value)
 
 
-class HistArray(ntuple('HistArray', 'weightskey weights axiskey axis scope')):
-    def __new__(cls, weightskey, weights, axiskey, axis, scope):
-        assert len(weights) == len(axis)
+class HistArray(ntuple('HistArray', 'weightskey weights axiskey axis index scope')):
+    def __new__(cls, weightskey, weights, axiskey, axis, index, scope):
+        assert len(weights) == len(axis) == len(index)
         assert isinstance(scope, dict)
-        return super().__new__(cls, weightskey, weights, axiskey, axis, scope)
+        return super().__new__(cls, weightskey, weights, axiskey, axis, index, scope)
 
 
 class TableBase(ABC):
@@ -97,40 +97,23 @@ class TableBase(ABC):
  
 
 class HistTable(TableBase):
-    def __call__(self, size): return self.__histogram.rvs(size=(1, size))[0]    
-    def __init__(self, data, *args, variables, **kwargs):
-        assert isinstance(data, HistArray) 
-        index = self.__createIndex(variables[data.axiskey].datatype, data.axiskey, data.axis, variables[data.axiskey], *args, **kwargs)
-        index, axis, weights = self.__zippedsort(index, data.axis, data.weights)
-        data = HistArray(data.weightskey, weights, data.axiskey, axis, data.scope)        
-        super().__init__(data, *args, variables=variables, **kwargs)       
-        self.__index = index
-        self.__histogram = stats.rv_discrete(name=self.name, values=(self.__index, _normalize(self.data.weights)))
-
-    @staticmethod
-    def __zippedsort(index, axis, weights):
-        content = [(i, a, w) for i, a, w in sorted(zip(index, axis, weights), key=lambda zipped: zipped[0])]
-        function = lambda x: [y[x] for y in content]
-        index, axis, weights = np.array(function(0)), function(1), np.array(function(2))        
-        return index, axis, weights 
-    
-    @keydispatcher
-    def __createIndex(self, datatype, axiskey, axisvariable, *args, **kwargs): raise KeyError(datatype)
-    @__createIndex.register('num')
-    def __createIndexNum(self, axiskey, axisvalues, axisvariable, *args, **kwargs): return np.array([axisvariable.fromstr(axisvalue).value for axisvalue in axisvalues])
-    @__createIndex.register('range')
-    def __createIndexRange(self, axiskey, axisvalues, axisvariable, *args, how, **kwargs): return np.array([axisvariable.fromstr(axisvalue).consolidate(*args, how=how, **kwargs).value for axisvalue in axisvalues])
-    @__createIndex.register('category')
-    def __createIndexCategory(self, axiskey, axisvalues, axisvariable, *args, index, **kwargs): return np.array([index[axisvalue] for axisvalue in axisvalues])
-    
+    def __call__(self, size): return self.__histogram.rvs(size=(1, size))[0]            
+    def __init__(self, histarray, *args, variables, **kwargs):
+        assert isinstance(histarray, HistArray)        
+        super().__init__(histarray, *args, variables=variables, **kwargs)       
+        self.__histogram = stats.rv_discrete(name=self.name, values=(self.index, _normalize(self.weights)))
+     
+    @property
+    def concepts(self): return {indexvalue:axisvalue for indexvalue, axisvalue in zip(self.index, self.axis)}        
     @property
     def histarray(self): return self.data
+    
     @property
     def weights(self): return self.data.weights
     @property
     def axis(self): return self.data.axis
     @property
-    def index(self): return self.__index    
+    def index(self): return self.data.index    
     @property
     def scope(self): return self.data.scope
     @property
@@ -152,8 +135,7 @@ class HistTable(TableBase):
     @property
     def shape(self): return (2, len(self.data.weights))
     
-    def __len__(self): return len(self.data.weights)   
-    def __getitem__(self, index): return {index:axis for index, axis in zip(self.index, self.axis)}[index]        
+    def __len__(self): return len(self.data.weights)       
     def __iter__(self): 
         for axis, index, weight in zip(self.axis, self.index, self.weights):
             yield axis, index, weight
@@ -423,6 +405,12 @@ class ArrayTable(TableBase):
         newdataset.attrs = self.dataset.attrs
         return self.__class__(newdataset, variables=self.variables.copy(), name=self.name)
 
+    def addscope(self, axis, value, variable):
+        assert axis not in self.keys
+        newdataset = self.dataset.assign_coords(**{axis:str(variable(value))})
+        newvariables = self.variables.update({axis:variable})
+        return self.__class__(newdataset, variables=newvariables, name=self.name) 
+
     def expand(self, axis):
         assert axis in self.scopekeys
         newdataset = self.dataset.expand_dims(axis)        
@@ -458,7 +446,7 @@ class ArrayTable(TableBase):
         if factor == 1: return self
         newdataset = self.dataset * factor
         newdataset.attrs = self.dataset.attrs
-        newvariables = self.variables.update([(datakey, self.variables[datakey].transformation(*args, method='factor', how='multiply', factor=factor, **kwargs)) for datakey in _aslist(self.datakeys)])
+        newvariables = self.variables.update({datakey:self.variables[datakey].transformation(*args, method='factor', how='multiply', factor=factor, **kwargs) for datakey in _aslist(self.datakeys)})
         return self.__class__(newdataset, variables=newvariables, name=self.name)    
         
     def divide(self, factor, *args, **kwargs):
@@ -466,7 +454,7 @@ class ArrayTable(TableBase):
         if factor == 1: return self
         newdataset = self.dataset / factor
         newdataset.attrs = self.dataset.attrs     
-        newvariables = self.variables.update([(datakey, self.variables[datakey].transformation(*args, method='factor', how='divide', factor=factor, **kwargs)) for datakey in _aslist(self.datakeys)])
+        newvariables = self.variables.update({datakey:self.variables[datakey].transformation(*args, method='factor', how='divide', factor=factor, **kwargs) for datakey in _aslist(self.datakeys)})
         return self.__class__(newdataset, variables=newvariables, name=self.name)    
 
     def flatten(self): 
@@ -475,10 +463,61 @@ class ArrayTable(TableBase):
         for datakey in self.datakeys: dataframe[datakey] = dataframe[datakey].apply(lambda x: str(self.variables[datakey](x)))
         return FlatTable(dataframe, variables=self.variables.copy(), name=self.name)     
 
-    def tohistogram(self, *args, **kwargs):
+    def tohistogram(self, *args, **kwargs): 
         assert all([self.layers == 1, self.dims == 1])
-        axisvalues, weightvalues = self.headers[self.headerkeys[0]], self.arrays[self.datakeys[0]]
-        histarray = HistArray(self.datakeys[0], weightvalues, self.headerkeys[0], axisvalues, self.scope)
-        return HistTable(histarray, *args, name=self.name, variables=self.variables, **kwargs)
+        datatype = self.variables[self.headerkeys[0]].datatype
+        indexvalues, axisvalues, weightvalues = self.__tohistogram(datatype, *args, **kwargs)
+        indexvalues, axisvalues, weightvalues = self.__zippedsort(indexvalues, axisvalues, weightvalues)
+        histarray = HistArray(self.datakeys[0], weightvalues, self.headerkeys[0], axisvalues, indexvalues, self.scope)
+        return HistTable(histarray, *args, name=self.name, variables=self.variables, **kwargs)        
+        
+    @staticmethod
+    def __zippedsort(index, axis, weights):
+        content = [(i, a, w) for i, a, w in sorted(zip(index, axis, weights), key=lambda zipped: zipped[0])]
+        function = lambda x: [y[x] for y in content]
+        index, axis, weights = np.array(function(0)), function(1), np.array(function(2))        
+        return index, axis, weights     
+        
+    @keydispatcher
+    def __tohistogram(self, datatype, *args, **kwargs): raise KeyError(datatype)    
     
+    @__tohistogram.register('num')
+    def __fromnum(self, *args, **kwargs): 
+        axisvalues = self.headers[self.headerkeys[0]]
+        indexvalues =  np.array([self.variables[self.headerkeys[0]].fromstr(axisvalue).value for axisvalue in axisvalues])
+        weightvalues = self.arrays[self.datakeys[0]]
+        return indexvalues, axisvalues, weightvalues
+    
+    @__tohistogram.register('range')
+    def __fromrange(self, *args, how, **kwargs):
+        axisvalues = self.headers[self.headerkeys[0]]
+        indexvalues = np.array([self.variables[self.headerkeys[0]].fromstr(axisvalue).consolidate(*args, how=how, **kwargs).value for axisvalue in axisvalues])
+        weightvalues = self.arrays[self.datakeys[0]]
+        return indexvalues, axisvalues, weightvalues    
+    
+    @__tohistogram.register('category')
+    def __fromcategory(self, *args, **kwargs):
+        axisvalues = self.variables[self.headerkeys[0]].spec.categories 
+        indexvalues = self.variables[self.headerkeys[0]].spec.indexes 
+        b = self.arrays[self.datakeys[0]]
+        a = np.zeros((len(b), len(axisvalues)))
+        for i, cats in enumerate(self.headers[self.headerkeys[0]]):
+            js = [indexvalues[axisvalues.index(cat)] for cat in _aslist(cats)]
+            for j in js: a[i, j] = 1
+        weightvalues = np.linalg.solve(a, b)
+        return indexvalues, axisvalues, weightvalues
+            
+
+
+
+
+
+
+
+
+
+
+
+
+
 
