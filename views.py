@@ -29,6 +29,7 @@ _STRUCTUREFORMAT = 'Layers={layers}, Dims={dims}, Shape={shape}, Fields={fields}
 _DATAFRAMEFORMAT = 'DATA: \n{values}'
 _WEIGHTSFORMAT = 'WEIGHTS = {key}: \n{values}'
 _AXISFORMAT = 'AXIS = {key}: \n{values}\n{index}'
+_TOTALFORMAT = 'TOTAL = {total}'
 
 
 _flatten = lambda nesteditems: [item for items in nesteditems for item in items]
@@ -45,7 +46,7 @@ _variablestring = lambda variableindex, variablekey, variablevalue: _VARIABLEFOR
 _dataframestring = lambda dataframe: _DATAFRAMEFORMAT.format(values=dataframe)
 _weightstring = lambda weightskey, weights: _WEIGHTSFORMAT.format(key=uppercase(weightskey), values=weights)
 _axisstring = lambda axiskey, axis, index: _AXISFORMAT.format(key=uppercase(axiskey), values=axis, index=index)
-
+_totalstring = lambda total: _TOTALFORMAT.format(total=total)
 
 
 class Structure(ntuple('Structure', 'layers dims shape')):
@@ -89,7 +90,9 @@ class HistTableView(TableViewBase):
     @property
     def scopestrings(self): return '\n'.join([_scopestring(scopekey=scopekey, scopevalues=scopevalues) for scopekey, scopevalues in self.table.scope.items()])
     @property
-    def strings(self): return _filterempty([self.weightstrings, self.axisstrings, self.scopestrings])
+    def totalstrings(self): return _totalstring(self.table.total())
+    @property
+    def strings(self): return _filterempty([self.weightstrings, self.axisstrings, self.totalstrings, self.scopestrings])
         
 
 class ArrayTableView(TableViewBase):

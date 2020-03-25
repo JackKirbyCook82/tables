@@ -129,7 +129,7 @@ class WeightReduction:
 
 @Transformation.register(required=('how', 'by', 'period'),
                          xarray_funcs={'average':xar.moving_average, 'summation':xar.moving_summation, 'difference':xar.moving_difference},
-                         varray_funcs={'summation':var.moving_summation, 'couple':var.moving_couple})
+                         varray_funcs={'summation':var.moving_summation, 'couple':var.moving_couple, 'minimum':var.moving_minimum, 'maximum':var.moving_maximum})
 class Moving:
     def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, by, period, **kwargs):
         varray = getheader(dataarray, axis, axisvariable)

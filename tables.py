@@ -149,6 +149,7 @@ class HistTable(TableBase):
 
     @property
     def array(self): return np.array([np.full(weight, index) for index, weight in zip(self.index, self.weights)]).flatten()        
+    def total(self): return np.sum(self.weights)
     def mean(self): return self.histogram.mean()
     def median(self): return self.histogram.median()
     def std(self): return self.histogram.std()

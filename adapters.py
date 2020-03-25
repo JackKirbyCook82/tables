@@ -13,7 +13,7 @@ from tables.alignment import align_arraytables, data_variables, axes_variables
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
-__all__ = ['flattable_transform', 'arraytable_inversion', 'arraytable_transform', 'arraytable_operation', 'arraytable_combine', 'arraytable_layer', 'arraytable_reconcile']
+__all__ = ['flattable_transform', 'arraytable_inversion', 'arraytable_transform', 'arraytable_operation', 'arraytable_combine', 'arraytable_layer']
 __copyright__ = "Copyright 2018, Jack Kirby Cook"
 __license__ = ""
 
@@ -99,8 +99,8 @@ def arraytable_operation(function):
             table = table.removescope(noncoreaxis) if noncoreaxis in table.scopekeys else table
             other = other.removescope(noncoreaxis) if noncoreaxis in other.scopekeys else other
   
-        datavariables = data_variables(table, other, *args, **kwargs)
-        variables = axes_variables(table, other, *args, **kwargs)  
+        datavariables = data_variables(table, other, *args, noncoreaxes=noncoreaxis, **kwargs)
+        variables = axes_variables(table, other, *args, noncoreaxes=noncoreaxis, **kwargs)  
 
         dataarray, otherdataarray = table.dataarrays[datakey], other.dataarrays[otherdatakey]
         newdataarray, newvariables = function(dataarray, otherdataarray, *args, variables=datavariables, **kwargs)  
