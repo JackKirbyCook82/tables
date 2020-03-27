@@ -70,19 +70,19 @@ class HistCollection(ODict):
     @property
     def sample_keys(self): return [histogram.axiskey for histogram in self.values()]
     
-    def __call__(self, size, *args, **kwargs): 
-        for sample_values in self.sample_matrix(size, *args, **kwargs):
-            yield {key:value for key, value in zip(self.sample_keys, sample_values)}
+    #def __call__(self, size, *args, **kwargs): 
+    #    for sample_values in self.sample_matrix(size, *args, **kwargs):
+    #        yield {key:value for key, value in zip(self.sample_keys, sample_values)}
 
-    def sample_matrix(self, size, *args, method='cholesky', **kwargs):
-        sample_matrix = np.array([histtable(size) for histtable in self.values()]) 
-        if method == 'cholesky':
-            correlation_matrix = cholesky(self.__correlationmatrix, lower=True)
-        elif method == 'eigen':
-            evals, evecs = eigh(self.__correlationmatrix)
-            correlation_matrix = np.dot(evecs, np.diag(np.sqrt(evals)))
-        else: raise ValueError(method)
-        return np.dot(correlation_matrix, sample_matrix).transpose()        
+    #def sample_matrix(self, size, *args, method='cholesky', **kwargs):
+    #    sample_matrix = np.array([histtable(size) for histtable in self.values()]) 
+    #    if method == 'cholesky':
+    #        correlation_matrix = cholesky(self.__correlationmatrix, lower=True)
+    #    elif method == 'eigen':
+    #        evals, evecs = eigh(self.__correlationmatrix)
+    #        correlation_matrix = np.dot(evecs, np.diag(np.sqrt(evals)))
+    #    else: raise ValueError(method)
+    #    return np.dot(correlation_matrix, sample_matrix).transpose()        
 
 
     
