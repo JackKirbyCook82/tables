@@ -12,7 +12,7 @@ from utilities.tree import Node, Tree, Renderer
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
-__all__ = ['Pipeline', 'Calculation', 'Renderer']
+__all__ = ['Pipeline', 'CalculationProcess', 'CalculationRenderer']
 __copyright__ = "Copyright 2018, Jack Kirby Cook"
 __license__ = ""
 
@@ -48,67 +48,59 @@ class Pipeline(Node):
         return self.__table
 
 
-class FrozenCalculationError(Exception): pass
-
-def freeze(function):
-    def wrapper(self, *args, **kwargs):
-        if self.frozen: raise FrozenCalculationError(repr(self))
-        else: return function(self, *args, **kwargs)
-    return wrapper
-    
-
 class Calculation(Tree):  
-    @property
-    def frozen(self): return self.__frozen
-    @property
-    def queue(self): return self.__queue
-    
-    def __init__(self, *args, **kwargs):
-        self.__queue = {}
-        self.__frozen = False
-        super().__init__(*args, **kwargs)
-    
     def __str__(self):
         namestr = '{} ("{}")'.format(self.name if self.name else self.__class__.__name__, self.key)
         if self.frozen: content = {key:[str(child.key) for child in pipeline.children] for key, pipeline in iter(self)}        
         else: content = {key:self.__queue[key] for key, pipeline in iter(self)}  
         jsonstr = json.dumps(content, sort_keys=False, indent=3, separators=(',', ' : '), default=str)  
-        return ' '.join([namestr, jsonstr])
+        return ' '.join([namestr, jsonstr])  
 
+
+class CalculationRenderer(Renderer): pass
+
+
+class CalculationProcess(object):
+    def __init__(self, key, *args, name=None, **kwargs):
+        self.__key = key
+        self.__name = name
+        self.__pipelines, self.__queue = [], {}
+    
+    def __repr__(self): 
+        if self.name: return "{}(key='{}', name='{}')".format(self.__class__.__name__, self.key, self.name)
+        else: return "{}(key='{}')".format(self.__class__.__name__, self.key)  
+    
+    @property
+    def name(self): return self.__name
+    @property
+    def key(self): return self.__key
+    @property
+    def pipelines(self): return self.__pipelines
+    @property
+    def queue(self): return self.__queue
+    
     def create(self, **kwargs):
         def decorator(function):
             pipelines = [Pipeline(key, function, value.get('parms', {})) for key, value in kwargs.items()]
             queue = {key:_aslist(value.get('tables', [])) for key, value in kwargs.items()}
-            assert not any([key in self.__queue.keys() for key in queue.keys()])
-            super(Calculation, self).append(*pipelines)
+            assert not any([key in self.queue.keys() for key in queue.keys()])
+            self.__pipelines.append(*pipelines)
             self.__queue.update(queue)
             return function
-        return decorator
-    
-    def append(self, *args, **kwargs): raise NotImplementedError('{}.{}()'.format(self.__class__.__name__, 'append'))    
-    
-    @freeze
+        return decorator    
+
     def __iadd__(self, other):
         assert isinstance(other, type(self))   
-        assert not any([otherkey in self.queue.keys() for otherkey in other.queue.keys()])
-        assert not any([otherkey in [nodekey for nodekey, node in iter(self)] for otherkey, other in iter(other)])                
+        assert not any([otherkey in self.queue.keys() for otherkey in other.queue.keys()])             
+        self.__pipelines.update(other.pipelines)        
         self.__queue.update(other.queue)
-        super(Calculation, self).append(*[node for nodekey, node in iter(other)])
         return self  
 
-    @freeze
     def __call__(self, *args, **kwargs):
+        nodes = {pipeline.key:pipeline for pipeline in self.__pipelines}
         for nodekey, childrenkeys in self.queue.items(): 
-            self[nodekey].addchildren(*[self[childkey] for childkey in childrenkeys if self[childkey] not in self[nodekey].children])
-        self.__queue = {}
-        self.__frozen = True
-        return self
-
-
-
-        
-
-
+            nodes[nodekey].addchildren(*[nodes[childkey] for childkey in childrenkeys if nodes[childkey] not in nodes[nodekey].children])        
+        return Calculation(self.key, nodes=nodes, name=self.name)
 
 
 
