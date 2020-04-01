@@ -102,7 +102,7 @@ class Calculation(Tree):
             self[nodekey].addchildren(*[self[childkey] for childkey in childrenkeys if self[childkey] not in self[nodekey].children])
         self.__queue = {}
         self.__frozen = True
-        return
+        return self
 
 
 

@@ -8,9 +8,7 @@ Created on Mon August 19 2019
 
 import pandas as pd
 import numpy as np
-from scipy.linalg import cholesky, eigh
 import json
-from collections import OrderedDict as ODict
 
 from tables.views import ArrayTableView, FlatTableView, HistTableView
 from tables.tables import ArrayTable, FlatTable, HistTable
@@ -21,7 +19,7 @@ import tables.processors as processors
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
-__all__ = ['ArrayTable', 'FlatTable', 'HistTable', 'HistCollection', 'set_options', 'get_option', 'show_options', 'combinations', 'operations', 'transformations', 'processors']
+__all__ = ['ArrayTable', 'FlatTable', 'HistTable', 'set_options', 'get_option', 'show_options', 'combinations', 'operations', 'transformations', 'processors']
 __copyright__ = "Copyright 2018, Jack Kirby Cook"
 __license__ = ""
 
@@ -58,36 +56,7 @@ def show_options():
     print('Table Options {}\n'.format(optionstrings))
 
 
-class HistCollection(ODict):       
-    def __init__(self, *histtables):
-        assert all([isinstance(histtable, HistTable) for histtable in histtables])
-        super().__init__([(histtable.name, histtable) for histtable in histtables])
-        self.__correlationmatrix = np.zeros((len(self), len(self)))
-        np.fill_diagonal(self.__correlationmatrix, 1)
-      
-    @property
-    def concepts(self): return ODict([(histogram.axiskey, histogram.concepts) for histogram in self.values()])                    
-    @property
-    def sample_keys(self): return [histogram.axiskey for histogram in self.values()]
-    
-    def __call__(self, size, *args, **kwargs): 
-        for sample_values in self.sample_matrix(size, *args, **kwargs):
-            yield {key:value for key, value in zip(self.sample_keys, sample_values)}
 
-    def sample_matrix(self, size, *args, method='cholesky', **kwargs):
-        sample_matrix = np.array([histtable(size) for histtable in self.values()]) 
-        if method == 'cholesky':
-            correlation_matrix = cholesky(self.__correlationmatrix, lower=True)
-        elif method == 'eigen':
-            evals, evecs = eigh(self.__correlationmatrix)
-            correlation_matrix = np.dot(evecs, np.diag(np.sqrt(evals)))
-        else: raise ValueError(method)
-        return np.dot(correlation_matrix, sample_matrix).transpose()        
-
-
-    
-    
-    
     
     
     
