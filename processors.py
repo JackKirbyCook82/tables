@@ -51,8 +51,7 @@ class Pipeline(Node):
 class Calculation(Tree):  
     def __str__(self):
         namestr = '{} ("{}")'.format(self.name if self.name else self.__class__.__name__, self.key)
-        if self.frozen: content = {key:[str(child.key) for child in pipeline.children] for key, pipeline in iter(self)}        
-        else: content = {key:self.__queue[key] for key, pipeline in iter(self)}  
+        content = {key:[str(child.key) for child in pipeline.children] for key, pipeline in iter(self)}        
         jsonstr = json.dumps(content, sort_keys=False, indent=3, separators=(',', ' : '), default=str)  
         return ' '.join([namestr, jsonstr])  
 
@@ -84,7 +83,7 @@ class CalculationProcess(object):
             pipelines = [Pipeline(key, function, value.get('parms', {})) for key, value in kwargs.items()]
             queue = {key:_aslist(value.get('tables', [])) for key, value in kwargs.items()}
             assert not any([key in self.queue.keys() for key in queue.keys()])
-            self.__pipelines.append(*pipelines)
+            self.__pipelines = [*self.pipelines, *pipelines]
             self.__queue.update(queue)
             return function
         return decorator    
@@ -92,12 +91,12 @@ class CalculationProcess(object):
     def __iadd__(self, other):
         assert isinstance(other, type(self))   
         assert not any([otherkey in self.queue.keys() for otherkey in other.queue.keys()])             
-        self.__pipelines.update(other.pipelines)        
+        self.__pipelines = [*self.pipelines, *pipelines]       
         self.__queue.update(other.queue)
         return self  
 
     def __call__(self, *args, **kwargs):
-        nodes = {pipeline.key:pipeline for pipeline in self.__pipelines}
+        nodes = {pipeline.key:pipeline for pipeline in self.pipelines}
         for nodekey, childrenkeys in self.queue.items(): 
             nodes[nodekey].addchildren(*[nodes[childkey] for childkey in childrenkeys if nodes[childkey] not in nodes[nodekey].children])        
         return Calculation(self.key, nodes=nodes, name=self.name)
