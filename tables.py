@@ -424,7 +424,7 @@ class ArrayTable(TableBase):
         for axis in axes: 
             if axis in self.scopekeys: pass
             elif axis in self.headerkeys:
-                assert len(self.dataset.coords[axis]) == 1
+                if len(self.dataset.coords[axis]) != 1: raise ValueError(axis)
                 newdataset = newdataset.squeeze(dim=axis, drop=False)
             else: raise ValueError(axis)
         newdataset.attrs = self.dataset.attrs
