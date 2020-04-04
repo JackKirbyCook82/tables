@@ -335,7 +335,7 @@ class ArrayTable(TableBase):
             if isinstance(value, list): assert all([isinstance(item, int) for item in value])
         newdataset = self.dataset.isel(**axis)
         newdataset.attrs = self.dataset.attrs
-        return self.__class__(newdataset, variables=self.variables.copy(), name=self.name).dropallna()          
+        return self.__class__(newdataset, variables=self.variables.copy(), name=self.name)         
             
     def sel(self, **axis):
         assert all([key in self.headerkeys for key in axis.keys()])
@@ -344,7 +344,7 @@ class ArrayTable(TableBase):
             if isinstance(value, list): assert all([isinstance(item, str) for item in value])
         newdataset = self.dataset.sel(**axis)
         newdataset.attrs = self.dataset.attrs
-        return self.__class__(newdataset, variables=self.variables.copy(), name=self.name).dropallna()  
+        return self.__class__(newdataset, variables=self.variables.copy(), name=self.name)
     
     def sort(self, axis, ascending=True):
         assert axis in self.dimkeys

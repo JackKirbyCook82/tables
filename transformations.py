@@ -97,7 +97,7 @@ class Scale:
      
 
 @Transformation.register(required=('how', 'by'),
-                         xarray_funcs={'summation':xar.summation, 'average':xar.average, 'wtaverage':xar.wtaverage, 'stdev':xar.stdev, 'minimum':xar.minimum, 'maximum':xar.maximum}, 
+                         xarray_funcs={'summation':xar.summation, 'average':xar.average, 'stdev':xar.stdev, 'minimum':xar.minimum, 'maximum':xar.maximum}, 
                          varray_funcs={'summation':var.summation, 'couple':var.couple, 'minimum':var.minimum, 'maximum':var.maximum})
 class Reduction: 
     def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, by, **kwargs):
