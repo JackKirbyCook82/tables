@@ -31,11 +31,11 @@ __license__ = ""
 
 AGGREGATIONS = {'sum':np.sum, 'avg':np.mean, 'max':np.max, 'min':np.min}
 
-_normalize = lambda x: x / np.sum(x)
 _union = lambda x, y: list(set(x) | set(y))
 _intersection = lambda x, y: list(set(x) & set(y))
 _aslist = lambda items: [items] if not isinstance(items, (list, tuple)) else list(items)
 _filterempty = lambda items: [item for item in _aslist(items) if item]
+_normalize = lambda items: np.array(items) / np.sum(np.array(items))
 
 _replacenan = lambda dataarray, value: xr.where(~np.isnan(dataarray), dataarray, value)
 _replaceinf = lambda dataarray, value: xr.where(~np.isinf(dataarray), dataarray, value)
@@ -148,7 +148,7 @@ class HistTable(TableBase):
         return self.__class__(data, variables=variables, name=self.name)
 
     @property
-    def array(self): return np.array([np.full(weight, index) for index, weight in zip(self.index, self.weights)]).flatten()        
+    def array(self): return np.array([np.full(weight, index) for index, weight in zip(self.index, self.weights)]).flatten()   
     def total(self): return np.sum(self.weights)
     def mean(self): return self.histogram.mean()
     def median(self): return self.histogram.median()

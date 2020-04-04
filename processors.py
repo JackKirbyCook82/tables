@@ -91,7 +91,7 @@ class CalculationProcess(object):
     def __iadd__(self, other):
         assert isinstance(other, type(self))   
         assert not any([otherkey in self.queue.keys() for otherkey in other.queue.keys()])             
-        self.__pipelines = [*self.pipelines, *pipelines]       
+        self.__pipelines = [*self.pipelines, *other.pipelines]       
         self.__queue.update(other.queue)
         return self  
 
