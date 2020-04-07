@@ -48,7 +48,7 @@ class HistArray(ntuple('HistArray', 'weightskey weights axiskey axis index scope
         assert len(weights) == len(axis) == len(index)
         assert isinstance(scope, dict)
         return super().__new__(cls, weightskey, weights, axiskey, axis, index, scope)
-
+    
 
 class TableBase(ABC):
     View = lambda table: None
@@ -135,13 +135,17 @@ class HistTable(TableBase):
     @property
     def shape(self): return (2, len(self.data.weights))
     
+    def __getitem__(self, key): 
+        if key in self.axis: return self.weights[list(self.axis).index(key)]
+        elif key in self.index: return self.weights[list(self.index).index(key)]
+        else: raise ValueError(key)
+        
     def __len__(self): return len(self.data.weights)       
     def __iter__(self): 
         for axis, index, weight in zip(self.axis, self.index, self.weights):
             yield axis, index, weight
             
     def retag(self, **tags): 
-        data = HistArray()
         variables, scope = self.variables.copy(), self.scope.copy()
         for oldkey, newkey in tags.items(): variables[newkey], scope[newkey] = variables[oldkey], scope[oldkey]
         data = HistArray(tags.get(self.data.weightskey, self.data.weightskey), self.data.weights, tags.get(self.data.axiskey, self.data.axiskey), self.data.axis, scope)
@@ -157,6 +161,18 @@ class HistTable(TableBase):
     def skew(self): return stats.skew(self.array)
     def kurtosis(self): return stats.kurtosis(self.array)    
 
+    def xmin(self): return np.minimum(self.index)
+    def xmax(self): return np.maximum(self.index)
+    def xdev(self, x): 
+        if isinstance(x, Number): pass
+        elif isinstance(x, str):
+            if x in self.index: x = self.index.index(x) 
+            else: raise ValueError(x)
+        else: raise TypeError(type(x))        
+        indexfunction = lambda i: pow(x - i, 2) / pow(self.xmax() - self.xmin(), 2)
+        weightfunction = lambda weight: weight / self.total()
+        return np.sum(np.array([indexfunction(i) * weightfunction(w) for i, w in zip(self.index, self.weights)]))
+    
 
 class FlatTable(TableBase):
     def __init__(self, data, *args, variables, **kwargs):
