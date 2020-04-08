@@ -60,7 +60,7 @@ class CalculationRenderer(Renderer): pass
 
 
 class CalculationProcess(object):
-    def __init__(self, key, *args, name=None, **kwargs):
+    def __init__(self, key, *args, name=None, pipelines=[], queue={}, **kwargs):
         self.__key = key
         self.__name = name
         self.__pipelines, self.__queue = [], {}
@@ -88,12 +88,14 @@ class CalculationProcess(object):
             return function
         return decorator    
 
-    def __iadd__(self, other):
+    def __add__(self, other):
         assert isinstance(other, type(self))   
-        assert not any([otherkey in self.queue.keys() for otherkey in other.queue.keys()])             
-        self.__pipelines = [*self.pipelines, *other.pipelines]       
-        self.__queue.update(other.queue)
-        return self  
+        assert not any([otherkey in self.queue.keys() for otherkey in other.queue.keys()])        
+        key = '+'.join([self.key, other.key])
+        name = '+'.join([self.name, other.name])
+        pipelines = [*self.pipelines, *other.pipelines]       
+        queue = {**self.queue, **other.queue}
+        return self.__class__(key, name=name, queue=queue, pipelines=pipelines)  
 
     def __call__(self, *args, **kwargs):
         nodes = {pipeline.key:pipeline for pipeline in self.pipelines}

@@ -100,7 +100,7 @@ class HistTable(TableBase):
     def __call__(self, size): return self.__histogram.rvs(size=(1, size))[0]            
     def __init__(self, histarray, *args, variables, **kwargs):
         assert isinstance(histarray, HistArray)        
-        super().__init__(histarray, *args, variables=variables, **kwargs)       
+        super().__init__(histarray, *args, variables=variables, **kwargs)    
         self.__histogram = stats.rv_discrete(name=self.name, values=(self.index, _normalize(self.weights)))
      
     @property
@@ -153,7 +153,7 @@ class HistTable(TableBase):
 
     @property
     def array(self): return np.array([np.full(weight, index) for index, weight in zip(self.index, self.weights)]).flatten()   
-    def total(self): return np.sum(self.weights)
+    def total(self): return np.round(np.sum(self.weights), decimals=2)
     def mean(self): return self.histogram.mean()
     def median(self): return self.histogram.median()
     def std(self): return self.histogram.std()
