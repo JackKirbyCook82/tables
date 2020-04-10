@@ -19,7 +19,7 @@ from tables.adapters import flattable_transform, arraytable_inversion, arraytabl
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
-__all__ = ['Boundary', 'Scale', 'Reduction', 'WeightReduction', 'Cumulate', 'Uncumulate', 'Consolidate', 'Unconsolidate', 'Moving', 'GroupBy', 'Interpolate', 'Inversion']
+__all__ = []
 __copyright__ = "Copyright 2018, Jack Kirby Cook"
 __license__ = ""
 
@@ -188,7 +188,29 @@ class Unconsolidate:
         xarray.name = dataarray.name
         axisvariable = headertype(varray)        
         return xarray, datavariable, axisvariable
+ 
     
+@Transformation.register(required=('how',), xarray_funcs={'expand':nar.expand, 'factory':xar.xarray_fromvalues}, varray_funcs={'expand':var.expand})
+class Expansion:
+    def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, **kwargs):
+        narray, coords, attrs = dataarray.values, dataarray.coords, dataarray.attrs 
+        varray = getheader(dataarray, axis, axisvariable)  
+        index = dataarray.get_axis_num(axis)         
+              
+        newvarray = self.varray_funcs['expand'](varray, *args, **kwargs)        
+        expansions = [sum([newitem in item for item in varray]) for newitem in newvarray]
+        newnarray = self.xarray_funcs['expand'](narray, *args, index=index, expansions=expansions, how=how, **kwargs)
+          
+        newheaderstrs = [str(item) for item in newvarray]
+        assert len(newheaderstrs) == len(set(newheaderstrs))
+        newheader = pd.Index(newheaderstrs, name=axis)        
+        dims = ODict([(key, value) if key != axis else (axis, newheader) for key, value in zip(coords.to_index().names, coords.to_index().levels)]) 
+        
+        scope = ODict([(key, coords[key]) for key in scopekeys(dataarray)])
+        xarray = self.xarray_funcs['factory']({dataarray.name :newnarray}, dims=dims, scope=scope, attrs=attrs, forcedataset=False) 
+        axisvariable = headertype(varray)
+        return xarray, datavariable, axisvariable
+
     
 @Transformation.register(varray_funcs={'boundary':var.boundary})
 class Boundary:

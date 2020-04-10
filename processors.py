@@ -7,6 +7,7 @@ Created on Mon Jul 15 2019
 """
 
 import json
+from copy import copy
 
 from utilities.tree import Node, Tree, Renderer
 
@@ -59,11 +60,11 @@ class Calculation(Tree):
 class CalculationRenderer(Renderer): pass
 
 
-class CalculationProcess(object):
-    def __init__(self, key, *args, name=None, pipelines=[], queue={}, **kwargs):
-        self.__key = key
-        self.__name = name
-        self.__pipelines, self.__queue = [], {}
+class CalculationProcess(dict):
+    def __init__(self, key, *args, name=None, **kwargs):
+        self.__key, self.__name = key, name
+        self.__pipelines = []
+        super().__init__()
     
     def __repr__(self): 
         if self.name: return "{}(key='{}', name='{}')".format(self.__class__.__name__, self.key, self.name)
@@ -73,35 +74,31 @@ class CalculationProcess(object):
     def name(self): return self.__name
     @property
     def key(self): return self.__key
-    @property
-    def pipelines(self): return self.__pipelines
-    @property
-    def queue(self): return self.__queue
     
     def create(self, **kwargs):
         def decorator(function):
             pipelines = [Pipeline(key, function, value.get('parms', {})) for key, value in kwargs.items()]
             queue = {key:_aslist(value.get('tables', [])) for key, value in kwargs.items()}
-            assert not any([key in self.queue.keys() for key in queue.keys()])
-            self.__pipelines = [*self.pipelines, *pipelines]
-            self.__queue.update(queue)
+            assert not any([key in self.keys() for key in queue.keys()])
+            self.__pipelines = [*self.__pipelines, *pipelines]
+            self.update(queue)
             return function
         return decorator    
 
-    def __add__(self, other):
-        assert isinstance(other, type(self))   
-        assert not any([otherkey in self.queue.keys() for otherkey in other.queue.keys()])        
-        key = '+'.join([self.key, other.key])
-        name = '+'.join([self.name, other.name])
-        pipelines = [*self.pipelines, *other.pipelines]       
-        queue = {**self.queue, **other.queue}
-        return self.__class__(key, name=name, queue=queue, pipelines=pipelines)  
+    def retag(self, key=None, name=None): 
+        self.__key =  key if key else self.key
+        self.__name = name if name else self.name 
+        
+    def copy(self, key, *args, name=None, **kwargs): 
+        instance = copy(self)
+        instance.retag(key=key, name=name)
+        return instance
 
     def __call__(self, *args, **kwargs):
-        nodes = {pipeline.key:pipeline for pipeline in self.pipelines}
-        for nodekey, childrenkeys in self.queue.items(): 
+        nodes = {pipeline.key:pipeline for pipeline in self.__pipelines}
+        for nodekey, childrenkeys in self.items(): 
             nodes[nodekey].addchildren(*[nodes[childkey] for childkey in childrenkeys if nodes[childkey] not in nodes[nodekey].children])        
-        return Calculation(self.key, nodes=nodes, name=self.name)
+        return Calculation(self.key, name=self.name, nodes=nodes)
 
 
 
