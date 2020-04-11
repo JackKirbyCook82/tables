@@ -177,10 +177,7 @@ class HistTable(TableBase):
 class FlatTable(TableBase):
     def __init__(self, data, *args, variables, **kwargs):
         try: dataframe = data.to_frame()
-        except: dataframe = data
-        for column in dataframe.columns: 
-            try: dataframe[:, column] = dataframe[column].apply(lambda x: str(variables[column](x)))
-            except: pass      
+        except: dataframe = data    
         super().__init__(dataframe, *args, variables=variables, **kwargs)
        
     @property
@@ -224,25 +221,22 @@ class FlatTable(TableBase):
     @createdata.register('single')
     def __createdata_fromcolumn(self, key, *args, axis, function, **kwargs):      
         dataframe, variables = self.dataframe.copy(), self.variables.copy()
-        wrapper = lambda item: function(variables[axis].fromstr(item))
+        wrapper = lambda item: function(variables[axis](item))
         dataframe[key] = dataframe[axis].apply(wrapper)          
         variables[key] = type(dataframe[key].loc[0])
-        dataframe[key] = dataframe[key].apply(str)
         return dict(data=dataframe, variables=variables, name=self.name)
     @createdata.register('multiple')
     def __createdata_fromcolumns(self, key, *args, axes, function, **kwargs):
         dataframe, variables = self.dataframe.copy(), self.variables.copy()
-        wrapper = lambda items: function(*[variables[axis].fromstr(items[index]) for axis, index in zip(axes, range(len(axes)))])
+        wrapper = lambda items: function(*[variables[axis](items[index]) for axis, index in zip(axes, range(len(axes)))])
         dataframe[key] = dataframe[axes].apply(wrapper, axis=1)    
         variables[key] = type(dataframe[key].loc[0])
-        dataframe[key] = dataframe[key].apply(str)
         return dict(data=dataframe, variables=variables, name=self.name)    
    
     def pivot(self, index=[], columns=[], values=[], aggs={}):
         index, columns, values = [_aslist(item) for item in (index, columns, values)]
         dataframe = self.dataframe.copy()
-        for item in index: dataframe[item] = dataframe[item].apply(lambda x: self.variables[item].fromstr(x))
-        for value in values: dataframe[value] = dataframe[value].apply(lambda x: self.variables[value].fromstr(x).value)
+        for item in index: dataframe[item] = dataframe[item].apply(lambda x: self.variables[item](x))
         aggs = {value:AGGREGATIONS[aggkey] for value, aggkey in aggs.items() if value in values}
         pivoted = dataframe.pivot_table(index=index, columns=columns, values=values, aggfunc=aggs)
         pivoted = pivoted.sort_index(ascending=True)
@@ -251,18 +245,15 @@ class FlatTable(TableBase):
     def toseries(self, value, index=[]):
         dataframe = self.dataframe[[value, *_aslist(index)]]
         if index: dataframe = dataframe.set_index(index, drop=True)
-        dataframe.loc[:, value] = dataframe[value].apply(lambda x: self.variables[value].fromstr(x).value)
         return dataframe.squeeze()
         
     def todataframe(self, *values, index=[]):
         dataframe = self.dataframe[[*values, *_aslist(index)]]
         if index: dataframe = dataframe.set_index(index, drop=True)
-        for value in values: dataframe.loc[:, value] = dataframe[value].apply(lambda x: self.variables[value].fromstr(x).value)
         return dataframe
     
     def unflatten(self, *datakeys, **kwargs):
-        dataframe = self.dataframe.copy(deep=True)
-        for datakey in datakeys: dataframe.loc[:, datakey] = dataframe[datakey].apply(lambda x: self.variables[datakey].fromstr(x).value)      
+        dataframe = self.dataframe.copy(deep=True)   
         xarray = xarray_fromdataframe(dataframe, datakeys=datakeys, forcedataset=True, **kwargs)
         return ArrayTable(xarray, variables=self.variables.copy(), name=self.name)
 
@@ -365,9 +356,7 @@ class ArrayTable(TableBase):
     def sort(self, axis, ascending=True):
         assert axis in self.dimkeys
         newdataset = self.dataset.copy()
-        newdataset.coords[axis] = pd.Index([self.variables[axis].fromstr(item) for item in newdataset.coords[axis].values])
         newdataset = newdataset.sortby(axis, ascending=ascending)
-        newdataset.coords[axis] = pd.Index([str(item) for item in newdataset.coords[axis].values], name=axis)
         newdataset.attrs = self.dataset.attrs
         return self.__class__(newdataset, variables=self.variables.copy(), name=self.name)
     
@@ -424,7 +413,7 @@ class ArrayTable(TableBase):
 
     def addscope(self, axis, value, variable):
         assert axis not in self.keys
-        newdataset = self.dataset.assign_coords(**{axis:str(variable(value))})
+        newdataset = self.dataset.assign_coords(**{axis:value})
         newvariables = self.variables.update({axis:variable})
         return self.__class__(newdataset, variables=newvariables, name=self.name) 
 
@@ -477,7 +466,6 @@ class ArrayTable(TableBase):
     def flatten(self): 
         dataset = self.dataset.copy()
         dataframe = dataframe_fromxarray(dataset) 
-        for datakey in self.datakeys: dataframe[datakey] = dataframe[datakey].apply(lambda x: str(self.variables[datakey](x)))
         return FlatTable(dataframe, variables=self.variables.copy(), name=self.name)     
 
     def tohistogram(self, *args, **kwargs): 
@@ -500,17 +488,17 @@ class ArrayTable(TableBase):
     
     @__tohistogram.register('num')
     def __fromnum(self, *args, **kwargs): 
-        axisvalues = self.headers[self.headerkeys[0]]
-        indexvalues =  np.array([self.variables[self.headerkeys[0]].fromstr(axisvalue).value for axisvalue in axisvalues])
+        axisvalues = [str(self.variables[self.headerkeys[0]](value)) for value in  self.headers[self.headerkeys[0]]]
+        indexvalues =  self.headers[self.headerkeys[0]]
         weightvalues = self.arrays[self.datakeys[0]]
         return indexvalues, axisvalues, weightvalues
     
     @__tohistogram.register('range')
     def __fromrange(self, *args, how, **kwargs):
-        axisvalues = self.headers[self.headerkeys[0]]
-        indexvalues = np.array([self.variables[self.headerkeys[0]].fromstr(axisvalue).consolidate(*args, how=how, **kwargs).value for axisvalue in axisvalues])
+        axisvalues = [str(self.variables[self.headerkeys[0]](value)) for value in  self.headers[self.headerkeys[0]]]
+        indexvalues = np.array([self.variables[self.headerkeys[0]](axisvalue).consolidate(*args, how=how, **kwargs).value for axisvalue in axisvalues])
         weightvalues = self.arrays[self.datakeys[0]]
-        return indexvalues, axisvalues, weightvalues    
+        return indexvalues, axisvalues, weightvalues     
     
     @__tohistogram.register('category')
     def __fromcategory(self, *args, **kwargs):

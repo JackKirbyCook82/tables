@@ -106,10 +106,16 @@ class ArrayTableView(TableViewBase):
     def dataarrays(self): return ODict([(datakey, self.table[datakey].dropallna().sortall(ascending=True).dataarrays[datakey]) for datakey in self.table.datakeys])   
     @property
     def datastrings(self): return ODict([(datakey, _arraystring(dataindex, datakey, dataarray.dims, dataarray.values)) for dataindex, datakey, dataarray in zip(range(len(self.dataarrays)), self.dataarrays.keys(), self.dataarrays.values())])
+    
     @property
-    def headerstrings(self): return ODict([(datakey, '\n'.join([_headerstring(dimkey, dataarray.coords[dimkey].values) for dimkey in _headerkeys(dataarray)])) for datakey, dataarray in self.dataarrays.items()])
+    def headerstrings(self): 
+        strfunction = lambda key, values: [str(self.table.varaibles[key](value)) for value in values]
+        return ODict([(datakey, '\n'.join([_headerstring(dimkey, strfunction(dimkey, dataarray.coords[dimkey].values)) for dimkey in _headerkeys(dataarray)])) for datakey, dataarray in self.dataarrays.items()])    
     @property
-    def scopestrings(self): return {datakey:'\n'.join([_scopestring(nondimkey, dataarray.coords[nondimkey].values) for nondimkey in _scopekeys(dataarray)]) for datakey, dataarray in self.dataarrays.items()}
+    def scopestrings(self): 
+        strfunction = lambda key, value: str(self.table.varaibles[key](value))
+        return {datakey:'\n'.join([_scopestring(nondimkey, strfunction(nondimkey, dataarray.coords[nondimkey].values)) for nondimkey in _scopekeys(dataarray)]) for datakey, dataarray in self.dataarrays.items()}
+    
     @property
     def strings(self): 
         datastrings, headerstrings, scopestrings = self.datastrings, self.headerstrings, self.scopestrings
@@ -118,7 +124,11 @@ class ArrayTableView(TableViewBase):
 
 class FlatTableView(TableViewBase):
     @property
-    def strings(self): return [_dataframestring(self.table.dataframe)]
+    def strings(self): 
+        dataframe = self.table.dataframe.copy()
+        for column in dataframe.columns:
+            dataframe.loc[:, column] = dataframe[column].apply(lambda x: str(self.table.variables[column](x)))
+        return [_dataframestring(self.table.dataframe)]
 
 
 
