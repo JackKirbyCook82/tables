@@ -232,28 +232,11 @@ class FlatTable(TableBase):
         dataframe[key] = dataframe[axes].apply(wrapper, axis=1)    
         variables[key] = type(dataframe[key].loc[0])
         return dict(data=dataframe, variables=variables, name=self.name)    
-   
-    def pivot(self, index=[], columns=[], values=[], aggs={}):
-        index, columns, values = [_aslist(item) for item in (index, columns, values)]
-        dataframe = self.dataframe.copy()
-        for item in index: dataframe[item] = dataframe[item].apply(lambda x: self.variables[item](x))
-        aggs = {value:AGGREGATIONS[aggkey] for value, aggkey in aggs.items() if value in values}
-        pivoted = dataframe.pivot_table(index=index, columns=columns, values=values, aggfunc=aggs)
-        pivoted = pivoted.sort_index(ascending=True)
-        return pivoted
 
-    def toseries(self, value, index=[]):
-        dataframe = self.dataframe[[value, *_aslist(index)]]
-        if index: dataframe = dataframe.set_index(index, drop=True)
-        return dataframe.squeeze()
-        
-    def todataframe(self, *values, index=[]):
-        dataframe = self.dataframe[[*values, *_aslist(index)]]
-        if index: dataframe = dataframe.set_index(index, drop=True)
-        return dataframe
-    
     def unflatten(self, *datakeys, **kwargs):
         dataframe = self.dataframe.copy(deep=True)   
+        for column in dataframe.columns: 
+            if column not in datakeys:dataframe[column] = dataframe[column].apply(lambda x: self.variables[column](x))            
         xarray = xarray_fromdataframe(dataframe, datakeys=datakeys, forcedataset=True, **kwargs)
         return ArrayTable(xarray, variables=self.variables.copy(), name=self.name)
 
@@ -349,6 +332,11 @@ class ArrayTable(TableBase):
         assert all([isinstance(value, (str, list)) for value in axis.values()])
         for value in axis.values(): 
             if isinstance(value, list): assert all([isinstance(item, str) for item in value])
+        axisvar = {}
+        for key, value in axis.items():
+            if isinstance(key, str): axisvar[key] = self.table.variables[key].fromstr(value)
+            elif isinstance(key, list): axisvar[key] = [self.table.variables[key].fromstr(item) for item in value]
+            else: raise TypeError(type(value))
         newdataset = self.dataset.sel(**axis)
         newdataset.attrs = self.dataset.attrs
         return self.__class__(newdataset, variables=self.variables.copy(), name=self.name)
@@ -413,6 +401,7 @@ class ArrayTable(TableBase):
 
     def addscope(self, axis, value, variable):
         assert axis not in self.keys
+        value = variable(value)
         newdataset = self.dataset.assign_coords(**{axis:value})
         newvariables = self.variables.update({axis:variable})
         return self.__class__(newdataset, variables=newvariables, name=self.name) 
@@ -464,7 +453,9 @@ class ArrayTable(TableBase):
         return self.__class__(newdataset, variables=newvariables, name=self.name)    
 
     def flatten(self): 
-        dataset = self.dataset.copy()
+        dataset = self.dataset.copy()       
+        for key in self.headerkeys: dataset.coords[key] = pd.Index([item.value for item in self.dataset.coords[key].values], name=key)
+        for key in self.scopekeys: dataset.coords[key] = self.dataset.coords[key]
         dataframe = dataframe_fromxarray(dataset) 
         return FlatTable(dataframe, variables=self.variables.copy(), name=self.name)     
 
@@ -488,15 +479,15 @@ class ArrayTable(TableBase):
     
     @__tohistogram.register('num')
     def __fromnum(self, *args, **kwargs): 
-        axisvalues = [str(self.variables[self.headerkeys[0]](value)) for value in  self.headers[self.headerkeys[0]]]
+        axisvalues = [str(value) for value in self.headers[self.headerkeys[0]]]
         indexvalues =  self.headers[self.headerkeys[0]]
         weightvalues = self.arrays[self.datakeys[0]]
         return indexvalues, axisvalues, weightvalues
     
     @__tohistogram.register('range')
     def __fromrange(self, *args, how, **kwargs):
-        axisvalues = [str(self.variables[self.headerkeys[0]](value)) for value in  self.headers[self.headerkeys[0]]]
-        indexvalues = np.array([self.variables[self.headerkeys[0]](axisvalue).consolidate(*args, how=how, **kwargs).value for axisvalue in axisvalues])
+        axisvalues = [str(value) for value in self.headers[self.headerkeys[0]]]
+        indexvalues = np.array([axisvalue.consolidate(*args, how=how, **kwargs).value for axisvalue in axisvalues])
         weightvalues = self.arrays[self.datakeys[0]]
         return indexvalues, axisvalues, weightvalues     
     

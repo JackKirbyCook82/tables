@@ -31,9 +31,9 @@ _intersection = lambda x, y: list(set(x) & set(y))
 headerkeys = lambda dataarray: tuple(dataarray.dims)
 scopekeys = lambda dataarray: tuple(set(dataarray.coords.keys()) - set(dataarray.dims))
 
-def getvarray(dataarray, axis, variable): return [variable(item) for item in dataarray.coords[axis].values]
+def getvarray(dataarray, axis, variable): return [item for item in dataarray.coords[axis].values]
 def setvarray(dataarray, axis, varray):
-    dataarray.coords[axis] = pd.Index([item.value for item in varray], name=axis)
+    dataarray.coords[axis] = pd.Index([item for item in varray], name=axis)
     return dataarray     
 
 def headertype(varray): 
@@ -102,8 +102,11 @@ class Reduction:
     def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, by, **kwargs):
         varray = getvarray(dataarray, axis, axisvariable)
         xarray = self.xarray_funcs[how](dataarray, *args, axis=axis, **kwargs)
-        varray = self.varray_funcs[by](varray, *args, axis=axis, **kwargs)
-        xarray = xarray.assign_coords(**{axis:varray.value}).expand_dims(axis)   
+        varray = self.varray_funcs[by](varray, *args, axis=axis, **kwargs)  
+        try: xarray = xarray.assign_coords(**{axis:varray}).expand_dims(axis) 
+        except:        
+            xarray = xarray.assign_coords(**{axis:str(varray)}).expand_dims(axis)
+            xarray.coords[axis] = pd.Index([varray], name=axis)      
         xarray.name = dataarray.name
         datavariable = datavariable.transformation(*args, method='reduction', how=how, **kwargs)
         axisvariable = headertype(varray)
@@ -119,7 +122,7 @@ class WeightReduction:
         values = [item.value for item in varray]
         xarray = self.xarray_funcs[how](dataarray, *args, axis=axis, weights=values, **kwargs)
         varray = self.varray_funcs[by](varray, *args,  **kwargs)
-        xarray = xarray.assign_coords(**{axis:varray.value}).expand_dims(axis)   
+        xarray = xarray.assign_coords(**{axis:varray}).expand_dims(axis)   
         xarray.name = dataarray.name
         datavariable = datavariable.transformation(*args, method='wtreduction', how=how, axis=axis, **kwargs)
         axisvariable = headertype(varray)        
@@ -200,7 +203,7 @@ class Expansion:
         expansions = [sum([newitem in item for newitem in newvarray]) for item in varray]
         newnarray = self.xarray_funcs['expand'](narray, *args, index=index, expansions=expansions, how=how, **kwargs)
           
-        newheaderstrs = [item.value for item in newvarray]
+        newheaderstrs = [item for item in newvarray]
         assert len(newheaderstrs) == len(set(newheaderstrs))
         newheader = pd.Index(newheaderstrs, name=axis)        
         dims = ODict([(key, value) if key != axis else (axis, newheader) for key, value in zip(coords.to_index().names, coords.to_index().levels)]) 
@@ -240,6 +243,7 @@ class Interpolate:
     def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, values, **kwargs):
         assert axisvariable.datatype == 'num'
         varray = getvarray(dataarray, axis, axisvariable)      
+        dataarray.coords[axis] = pd.Index([item.value for item in varray], name=axis)
         xarray = self.xarray_funcs['interpolate'](dataarray, *args, axis=axis, values=values, how=how, **kwargs)
         varray = self.varray_funcs['factory'](values, *args, variable=axisvariable, how=how, **kwargs)
         xarray = setvarray(xarray, axis, varray)
@@ -278,7 +282,7 @@ class Inversion(object):
         narray = self.xarray_funcs['inversion'](narray, headervalues, values, *args, index=index, axis=axis, how=how, **kwargs)
         varray = self.varray_funcs['factory'](values, *args, variable=datavariable, how=how, **kwargs)        
         
-        newheaderstrs = [item.value for item in varray]
+        newheaderstrs = [item for item in varray]
         assert len(newheaderstrs) == len(set(newheaderstrs))
         newheader = pd.Index(newheaderstrs, name=dataarray.name)        
         dims = ODict([(key, value) if key != axis else (newheader.name, newheader) for key, value in zip(coords.to_index().names, coords.to_index().levels)]) 

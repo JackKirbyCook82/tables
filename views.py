@@ -7,6 +7,7 @@ Created on Fri Mar 15 2019
 """
 
 from abc import ABC, abstractmethod
+import copy
 import numpy as np
 from collections import namedtuple as ntuple
 from collections import OrderedDict as ODict
@@ -105,16 +106,16 @@ class ArrayTableView(TableViewBase):
     @property
     def dataarrays(self): return ODict([(datakey, self.table[datakey].dropallna().sortall(ascending=True).dataarrays[datakey]) for datakey in self.table.datakeys])   
     @property
-    def datastrings(self): return ODict([(datakey, _arraystring(dataindex, datakey, dataarray.dims, dataarray.values)) for dataindex, datakey, dataarray in zip(range(len(self.dataarrays)), self.dataarrays.keys(), self.dataarrays.values())])
+    def datastrings(self): return ODict([(datakey, _arraystring(dataindex, datakey, dataarray.dims, dataarray.values)) for dataindex, datakey, dataarray in zip(range(len(self.dataarrays)), self.dataarrays.keys(), self.dataarrays.values())])   
     
     @property
     def headerstrings(self): 
-        strfunction = lambda key, values: [str(self.table.varaibles[key](value)) for value in values]
-        return ODict([(datakey, '\n'.join([_headerstring(dimkey, strfunction(dimkey, dataarray.coords[dimkey].values)) for dimkey in _headerkeys(dataarray)])) for datakey, dataarray in self.dataarrays.items()])    
+        strfunction = lambda values: np.array([str(value) for value in values])
+        return ODict([(datakey, '\n'.join([_headerstring(dimkey, strfunction(dataarray.coords[dimkey].values)) for dimkey in _headerkeys(dataarray)])) for datakey, dataarray in self.dataarrays.items()])    
     @property
     def scopestrings(self): 
-        strfunction = lambda key, value: str(self.table.varaibles[key](value))
-        return {datakey:'\n'.join([_scopestring(nondimkey, strfunction(nondimkey, dataarray.coords[nondimkey].values)) for nondimkey in _scopekeys(dataarray)]) for datakey, dataarray in self.dataarrays.items()}
+        strfunction = lambda value: str(value)
+        return {datakey:'\n'.join([_scopestring(nondimkey, strfunction(dataarray.coords[nondimkey].values)) for nondimkey in _scopekeys(dataarray)]) for datakey, dataarray in self.dataarrays.items()}
     
     @property
     def strings(self): 
@@ -128,7 +129,7 @@ class FlatTableView(TableViewBase):
         dataframe = self.table.dataframe.copy()
         for column in dataframe.columns:
             dataframe.loc[:, column] = dataframe[column].apply(lambda x: str(self.table.variables[column](x)))
-        return [_dataframestring(self.table.dataframe)]
+        return [_dataframestring(dataframe)]
 
 
 
