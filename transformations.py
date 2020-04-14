@@ -28,9 +28,6 @@ _aslist = lambda items: [items] if not isinstance(items, (list, tuple)) else lis
 _union = lambda x, y: list(set(x) | set(y))
 _intersection = lambda x, y: list(set(x) & set(y))
 
-headerkeys = lambda dataarray: tuple(dataarray.dims)
-scopekeys = lambda dataarray: tuple(set(dataarray.coords.keys()) - set(dataarray.dims))
-
 def getvarray(dataarray, axis, variable): return [item for item in dataarray.coords[axis].values]
 def setvarray(dataarray, axis, varray):
     dataarray.coords[axis] = pd.Index([item for item in varray], name=axis)
@@ -122,7 +119,10 @@ class WeightReduction:
         values = [item.value for item in varray]
         xarray = self.xarray_funcs[how](dataarray, *args, axis=axis, weights=values, **kwargs)
         varray = self.varray_funcs[by](varray, *args,  **kwargs)
-        xarray = xarray.assign_coords(**{axis:varray}).expand_dims(axis)   
+        try: xarray = xarray.assign_coords(**{axis:varray}).expand_dims(axis) 
+        except:        
+            xarray = xarray.assign_coords(**{axis:str(varray)}).expand_dims(axis)
+            xarray.coords[axis] = pd.Index([varray], name=axis)  
         xarray.name = dataarray.name
         datavariable = datavariable.transformation(*args, method='wtreduction', how=how, axis=axis, **kwargs)
         axisvariable = headertype(varray)        
@@ -196,20 +196,18 @@ class Unconsolidate:
 class Expansion:
     def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, **kwargs):
         narray, coords, attrs = dataarray.values, dataarray.coords, dataarray.attrs 
+        axes = ODict([(key, value) for key, value in zip(coords.to_index().names, coords.to_index().levels)]) 
+        
         varray = getvarray(dataarray, axis, axisvariable)  
         index = dataarray.get_axis_num(axis)         
               
         newvarray = self.varray_funcs['expand'](varray, *args, **kwargs)       
         expansions = [sum([newitem in item for newitem in newvarray]) for item in varray]
-        newnarray = self.xarray_funcs['expand'](narray, *args, index=index, expansions=expansions, how=how, **kwargs)
-          
-        newheaderstrs = [item for item in newvarray]
-        assert len(newheaderstrs) == len(set(newheaderstrs))
-        newheader = pd.Index(newheaderstrs, name=axis)        
-        dims = ODict([(key, value) if key != axis else (axis, newheader) for key, value in zip(coords.to_index().names, coords.to_index().levels)]) 
+        newnarray = self.xarray_funcs['expand'](narray, *args, index=index, expansions=expansions, how=how, **kwargs)              
+        newaxes = ODict([(key, value) if key != axis else (axis, newvarray) for key, value in axes.items()]) 
         
-        scope = ODict([(key, coords[key]) for key in scopekeys(dataarray)])
-        xarray = self.xarray_funcs['factory']({dataarray.name :newnarray}, dims=dims, scope=scope, attrs=attrs, forcedataset=False) 
+        assert len(newvarray) == len(set(newvarray))    
+        xarray = self.xarray_funcs['factory']({dataarray.name :newnarray}, axes=newaxes, attrs=attrs, forcedataset=False) 
         axisvariable = headertype(varray)
         return xarray, datavariable, axisvariable
 
@@ -275,27 +273,20 @@ class Inversion(object):
     
     def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, values, **kwargs):
         narray, coords, attrs = dataarray.values, dataarray.coords, dataarray.attrs   
+        axes = ODict([(key, value) for key, value in zip(coords.to_index().names, coords.to_index().levels)]) 
+        
         varray = getvarray(dataarray, axis, axisvariable)
         headervalues = [item.value for item in varray]   
         index = dataarray.get_axis_num(axis)  
         
-        narray = self.xarray_funcs['inversion'](narray, headervalues, values, *args, index=index, axis=axis, how=how, **kwargs)
-        varray = self.varray_funcs['factory'](values, *args, variable=datavariable, how=how, **kwargs)        
-        
-        newheaderstrs = [item for item in varray]
-        assert len(newheaderstrs) == len(set(newheaderstrs))
-        newheader = pd.Index(newheaderstrs, name=dataarray.name)        
-        dims = ODict([(key, value) if key != axis else (newheader.name, newheader) for key, value in zip(coords.to_index().names, coords.to_index().levels)]) 
-        scope = ODict([(key, coords[key]) for key in scopekeys(dataarray)])
+        newnarray = self.xarray_funcs['inversion'](narray, headervalues, values, *args, index=index, axis=axis, how=how, **kwargs)
+        newvarray = self.varray_funcs['factory'](values, *args, variable=datavariable, how=how, **kwargs)                           
+        newaxes = ODict([(key, value) if key != axis else (dataarray.name, newvarray) for key, value in axes.items()]) 
 
-        xarray = self.xarray_funcs['factory']({axis:narray}, dims=dims, scope=scope, attrs=attrs, forcedataset=False) 
-        xarray.name = axis
+        assert len(newvarray) == len(set(newvarray))  
+        xarray = self.xarray_funcs['factory']({axis:newnarray}, axes=newaxes, attrs=attrs, forcedataset=False) 
         return xarray   
    
- 
-    
-
-
 
 
 

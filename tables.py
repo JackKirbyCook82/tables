@@ -18,7 +18,7 @@ from collections import OrderedDict as ODict
 from collections import namedtuple as ntuple
 
 from utilities.dataframes import dataframe_fromxarray
-from utilities.xarrays import xarray_fromdataframe, standardize, absolute
+from utilities.xarrays import xarray_fromdataframe, xarray_fromvalues, standardize, absolute
 from utilities.dispatchers import clskey_singledispatcher as keydispatcher
 from utilities.strings import uppercase
 
@@ -233,13 +233,6 @@ class FlatTable(TableBase):
         variables[key] = type(dataframe[key].loc[0])
         return dict(data=dataframe, variables=variables, name=self.name)    
 
-    def unflatten(self, *datakeys, **kwargs):
-        dataframe = self.dataframe.copy(deep=True)   
-        for column in dataframe.columns: 
-            if column not in datakeys:dataframe[column] = dataframe[column].apply(lambda x: self.variables[column](x))            
-        xarray = xarray_fromdataframe(dataframe, datakeys=datakeys, forcedataset=True, **kwargs)
-        return ArrayTable(xarray, variables=self.variables.copy(), name=self.name)
-
     def toexcel(self, file):
         if not os.path.isfile(file): openpyxl.Workbook().save(file)            
         writer = pd.ExcelWriter(file, engine='openpyxl') 
@@ -248,6 +241,27 @@ class FlatTable(TableBase):
         writer.save()
         writer.close()
 
+### WORKING ###
+
+    def unflatten(self, *datakeys, **kwargs):
+        dataframe = self.dataframe.copy(deep=True) 
+        for column in dataframe.columns: 
+            if column not in datakeys: 
+                dataframe[column] = dataframe[column].apply(lambda x: self.variables[column](x))            
+        try: xarray = xarray_fromdataframe(dataframe, datakeys=datakeys, forcedataset=True, **kwargs)
+        except: 
+            for column in dataframe.columns:   
+                if column not in datakeys: 
+                    dataframe[column] = dataframe[column].apply(lambda x: x.value)  
+            xarray = xarray_fromdataframe(dataframe, datakeys=datakeys, forcedataset=True, **kwargs)
+            for column in dataframe.columns:
+                if column not in datakeys: 
+                    varray = [self.variables[column](value) for value in xarray.coords[column].values]                               
+                    xarray.coords[column] = pd.Index(varray, name=column) 
+        return ArrayTable(xarray, variables=self.variables.copy(), name=self.name)
+    
+### WORKING ###  
+        
 
 class ArrayTable(TableBase):
     def __init__(self, data, *args, variables, **kwargs):
