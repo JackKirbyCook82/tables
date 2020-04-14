@@ -18,8 +18,9 @@ from collections import OrderedDict as ODict
 from collections import namedtuple as ntuple
 
 from utilities.dataframes import dataframe_fromxarray
-from utilities.xarrays import xarray_fromdataframe, xarray_fromvalues, standardize, absolute
+from utilities.xarrays import xarray_fromdataframe, standardize, absolute
 from utilities.dispatchers import clskey_singledispatcher as keydispatcher
+from utilities.dispatchers import clstype_singledispatcher as typedispatcher
 from utilities.strings import uppercase
 
 __version__ = "1.0.0"
@@ -241,27 +242,21 @@ class FlatTable(TableBase):
         writer.save()
         writer.close()
 
-### WORKING ###
-
     def unflatten(self, *datakeys, **kwargs):
         dataframe = self.dataframe.copy(deep=True) 
-        for column in dataframe.columns: 
-            if column not in datakeys: 
-                dataframe[column] = dataframe[column].apply(lambda x: self.variables[column](x))            
+        for column in set(dataframe.columns) - set(datakeys): dataframe[column] = dataframe[column].apply(lambda x: self.variables[column](x))            
         try: xarray = xarray_fromdataframe(dataframe, datakeys=datakeys, forcedataset=True, **kwargs)
-        except: 
-            for column in dataframe.columns:   
-                if column not in datakeys: 
-                    dataframe[column] = dataframe[column].apply(lambda x: x.value)  
-            xarray = xarray_fromdataframe(dataframe, datakeys=datakeys, forcedataset=True, **kwargs)
-            for column in dataframe.columns:
-                if column not in datakeys: 
-                    varray = [self.variables[column](value) for value in xarray.coords[column].values]                               
-                    xarray.coords[column] = pd.Index(varray, name=column) 
-        return ArrayTable(xarray, variables=self.variables.copy(), name=self.name)
-    
-### WORKING ###  
-        
+        except: xarray = self.__unflatten(dataframe, *datakeys, **kwargs)
+        return ArrayTable(xarray, variables=self.variables.copy(), name=self.name)   
+
+    def __unflatten(self, dataframe, *datakeys, **kwargs):
+        for column in set(dataframe.columns) - set(datakeys): dataframe[column] = dataframe[column].apply(lambda x: x.value)  
+        xarray = xarray_fromdataframe(dataframe, datakeys=datakeys, forcedataset=True, **kwargs)
+        for column in set(dataframe.columns) - set(datakeys):
+            varray = [self.variables[column](value) for value in xarray.coords[column].values]                               
+            xarray.coords[column] = pd.Index(varray, name=column)  
+        return xarray
+
 
 class ArrayTable(TableBase):
     def __init__(self, data, *args, variables, **kwargs):
@@ -317,43 +312,37 @@ class ArrayTable(TableBase):
         for oldkey, newkey in tags.items(): variables[newkey] = variables.pop(oldkey)
         return self.__class__(newdataset, variables=variables, name=self.name)
 
-    def __getitem__(self, items):
-        if not items: return self
-        elif isinstance(items, int): return self[self.datakeys[items]]
-        elif isinstance(items, str): return self[[items]]        
-        elif isinstance(items, (list, tuple)):
-            items = _filterempty(items)
-            assert all([item in self.datakeys for item in items])
-            newdataset = self.dataset[items]
-        elif isinstance(items, dict):
-            try: return self.sel(**items)
-            except: return self.isel(**items)
-        else: raise TypeError(type(items))        
-        newdataset.attrs = self.dataset.attrs
-        return self.__class__(newdataset, variables=self.variables.copy(), name=self.name).dropallna()
-     
-    def isel(self, **axis):
-        assert all([key in self.headerkeys for key in axis.keys()])
-        assert all([isinstance(value, (int, slice, list)) for value in axis.values()])
-        for value in axis.values(): 
-            if isinstance(value, list): assert all([isinstance(item, int) for item in value])
-        newdataset = self.dataset.isel(**axis)
-        newdataset.attrs = self.dataset.attrs
-        return self.__class__(newdataset, variables=self.variables.copy(), name=self.name)         
-            
-    def sel(self, **axis):
-        assert all([key in self.headerkeys for key in axis.keys()])
-        assert all([isinstance(value, (str, list)) for value in axis.values()])
-        for value in axis.values(): 
-            if isinstance(value, list): assert all([isinstance(item, str) for item in value])
-        axisvar = {}
-        for key, value in axis.items():
-            if isinstance(key, str): axisvar[key] = self.table.variables[key].fromstr(value)
-            elif isinstance(key, list): axisvar[key] = [self.table.variables[key].fromstr(item) for item in value]
-            else: raise TypeError(type(value))
-        newdataset = self.dataset.sel(**axis)
+    def __getitem__(self, items): return self.__getitem(items)
+    @typedispatcher
+    def __getitem(self, items): raise TypeError(type(items))    
+
+    @__getitem.register(int)
+    def __getitemInt(self, items): return self[self.datakeys[items]] 
+    @__getitem.register(str)
+    def __getitemStr(self, items): return self[[items]]    
+    @__getitem.register(list)
+    def __getitemList(self, items): 
+        newdataset = self.dataset[[item for item in items if item in self.datakeys]]
         newdataset.attrs = self.dataset.attrs
         return self.__class__(newdataset, variables=self.variables.copy(), name=self.name)
+    
+    @__getitem.register(dict)
+    def __getitemDict(self, axes): 
+        axes = {key:_aslist(values) for key, values in axes.items() if key in self.headerkeys}
+        try: return self.isel(**axes)
+        except Exception: return self.sel(**axes)
+        
+    def isel(self, **axes):
+        axes = {key:axes.get(key, slice(None)) for key in self.headerkeys}
+        newdataset = self.dataset.isel(**axes)
+        newdataset.attrs = self.dataset.attrs
+        return self.__class__(newdataset, variables=self.variables.copy(), name=self.name) 
+    
+    def sel(self, **axes):
+        axes = {key:axes.get(key, self.headers[:]) for key in self.headerkeys}
+        newdataset = self.dataset.sel(**axes)
+        newdataset.attrs = self.dataset.attrs
+        return self.__class__(newdataset, variables=self.variables.copy(), name=self.name) 
     
     def sort(self, axis, ascending=True):
         assert axis in self.dimkeys
