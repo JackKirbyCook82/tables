@@ -106,7 +106,7 @@ def arraytable_operation(function):
         newdataarray, newvariables = function(dataarray, otherdataarray, *args, variables=datavariables, **kwargs)  
         variables = variables.update(ODict([(key, value) for key, value in newvariables.items()]))       
         newdataset = newdataarray.to_dataset()  
-        
+
         return TableClass(data=newdataset, variables=variables, name=kwargs.get('name', table.name))
     update_wrapper(wrapper, function)
     return wrapper        

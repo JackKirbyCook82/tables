@@ -247,7 +247,8 @@ class FlatTable(TableBase):
         for column in set(dataframe.columns) - set(datakeys): dataframe[column] = dataframe[column].apply(lambda x: self.variables[column](x))            
         try: xarray = xarray_fromdataframe(dataframe, datakeys=datakeys, forcedataset=True, **kwargs)
         except: xarray = self.__unflatten(dataframe, *datakeys, **kwargs)
-        return ArrayTable(xarray, variables=self.variables.copy(), name=self.name)   
+        arraytable = ArrayTable(xarray, variables=self.variables.copy(), name=self.name)   
+        return arraytable
 
     def __unflatten(self, dataframe, *datakeys, **kwargs):
         for column in set(dataframe.columns) - set(datakeys): dataframe[column] = dataframe[column].apply(lambda x: x.value)  
@@ -328,9 +329,9 @@ class ArrayTable(TableBase):
     
     @__getitem.register(dict)
     def __getitemDict(self, axes): 
-        axes = {key:_aslist(values) for key, values in axes.items() if key in self.headerkeys}
+        axes = {key:values for key, values in axes.items() if key in self.headerkeys}
         try: return self.isel(**axes)
-        except Exception: return self.sel(**axes)
+        except: return self.sel(**axes)
         
     def isel(self, **axes):
         axes = {key:axes.get(key, slice(None)) for key in self.headerkeys}
@@ -339,7 +340,7 @@ class ArrayTable(TableBase):
         return self.__class__(newdataset, variables=self.variables.copy(), name=self.name) 
     
     def sel(self, **axes):
-        axes = {key:axes.get(key, self.headers[:]) for key in self.headerkeys}
+        axes = {key:axes.get(key, self.headers[key]) for key in self.headerkeys}
         newdataset = self.dataset.sel(**axes)
         newdataset.attrs = self.dataset.attrs
         return self.__class__(newdataset, variables=self.variables.copy(), name=self.name) 

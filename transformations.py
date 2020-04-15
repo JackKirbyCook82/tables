@@ -100,10 +100,8 @@ class Reduction:
         varray = getvarray(dataarray, axis, axisvariable)
         xarray = self.xarray_funcs[how](dataarray, *args, axis=axis, **kwargs)
         varray = self.varray_funcs[by](varray, *args, axis=axis, **kwargs)  
-        try: xarray = xarray.assign_coords(**{axis:varray}).expand_dims(axis) 
-        except:        
-            xarray = xarray.assign_coords(**{axis:str(varray)}).expand_dims(axis)
-            xarray.coords[axis] = pd.Index([varray], name=axis)      
+        xarray = xarray.assign_coords(**{axis:str(varray)}).expand_dims(axis)
+        xarray.coords[axis] = pd.Index([varray], name=axis)      
         xarray.name = dataarray.name
         datavariable = datavariable.transformation(*args, method='reduction', how=how, **kwargs)
         axisvariable = headertype(varray)
