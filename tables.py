@@ -308,11 +308,20 @@ class ArrayTable(TableBase):
     def scope(self): return {key:self.dataset.coords[key].values for key in self.scopekeys}
     
     def retag(self, **tags): 
-        newdataset = self.dataset.rename(name_dict=tags)
+        newdataset = self.dataset.rename(name_dict=tags) 
         variables = self.variables.copy()
         for oldkey, newkey in tags.items(): variables[newkey] = variables.pop(oldkey)
         return self.__class__(newdataset, variables=variables, name=self.name)
 
+#    def reaxis(self, fromaxis, toaxis, values, variables, *args, index=False, string=False, **kwargs):
+#        if index: values = {self.variables[fromaxis].fromindex(x):variables[toaxis].fromindex(y) for x, y in values.items()} 
+#        else: values = {self.variables[fromaxis](x):variables[toaxis](y) for x, y in values.items()} 
+#        newdataset = self.dataset.sel({fromaxis:list(values.keys())}).rename(name_dict={fromaxis:toaxis})
+#        newvariables = self.variables.copy()    
+#        newvariables[toaxis] = variables[toaxis]
+#        newdataset.coords[toaxis] = pd.Index(list(values.values()), name=toaxis)  
+#        return self.__class__(newdataset, variables=newvariables, name=kwargs.get('name', self.name))
+        
     def __getitem__(self, items): return self.__getitem(items)
     @typedispatcher
     def __getitem(self, items): raise TypeError(type(items))    
@@ -326,12 +335,6 @@ class ArrayTable(TableBase):
         newdataset = self.dataset[[item for item in items if item in self.datakeys]]
         newdataset.attrs = self.dataset.attrs
         return self.__class__(newdataset, variables=self.variables.copy(), name=self.name)
-    
-    @__getitem.register(dict)
-    def __getitemDict(self, axes): 
-        axes = {key:values for key, values in axes.items() if key in self.headerkeys}
-        try: return self.isel(**axes)
-        except: return self.sel(**axes)
         
     def isel(self, **axes):
         axes = {key:axes.get(key, slice(None)) for key in self.headerkeys}
@@ -341,6 +344,20 @@ class ArrayTable(TableBase):
     
     def sel(self, **axes):
         axes = {key:axes.get(key, self.headers[key]) for key in self.headerkeys}
+        newdataset = self.dataset.sel(**axes)
+        newdataset.attrs = self.dataset.attrs
+        return self.__class__(newdataset, variables=self.variables.copy(), name=self.name) 
+ 
+    def vsel(self, **axes):
+        axes = {key:axes.get(key, self.headers[key].value) for key in self.headerkeys}
+        axes = {key:[self.variables[key](value) for value in values] for key, values in axes.items()}
+        newdataset = self.dataset.sel(**axes)
+        newdataset.attrs = self.dataset.attrs
+        return self.__class__(newdataset, variables=self.variables.copy(), name=self.name) 
+    
+    def xsel(self, **axes):
+        axes = {key:axes.get(key, self.headers[key].index) for key in self.headerkeys}
+        axes = {key:[self.variables[key].fromindex(value) for value in values] for key, values in axes.items()}
         newdataset = self.dataset.sel(**axes)
         newdataset.attrs = self.dataset.attrs
         return self.__class__(newdataset, variables=self.variables.copy(), name=self.name) 

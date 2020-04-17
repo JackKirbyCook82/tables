@@ -194,7 +194,7 @@ class Unconsolidate:
 class Expansion:
     def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, **kwargs):
         narray, coords, attrs = dataarray.values, dataarray.coords, dataarray.attrs 
-        axes = ODict([(key, value) for key, value in zip(coords.to_index().names, coords.to_index().levels)]) 
+        axes = ODict([(key, value) for key, value in zip(coords.to_index().names, coords.to_index().levels)])        
         
         varray = getvarray(dataarray, axis, axisvariable)  
         index = dataarray.get_axis_num(axis)         
@@ -205,8 +205,8 @@ class Expansion:
         newaxes = ODict([(key, value) if key != axis else (axis, newvarray) for key, value in axes.items()]) 
         
         assert len(newvarray) == len(set(newvarray))    
-        xarray = self.xarray_funcs['factory']({dataarray.name :newnarray}, axes=newaxes, attrs=attrs, forcedataset=False) 
-        axisvariable = headertype(varray)
+        xarray = self.xarray_funcs['factory'](ODict([(dataarray.name, newnarray)]), axes=newaxes, attrs=attrs, forcedataset=False) 
+        axisvariable = headertype(newvarray)
         return xarray, datavariable, axisvariable
 
     
