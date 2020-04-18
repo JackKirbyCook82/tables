@@ -313,14 +313,16 @@ class ArrayTable(TableBase):
         for oldkey, newkey in tags.items(): variables[newkey] = variables.pop(oldkey)
         return self.__class__(newdataset, variables=variables, name=self.name)
 
-#    def reaxis(self, fromaxis, toaxis, values, variables, *args, index=False, string=False, **kwargs):
-#        if index: values = {self.variables[fromaxis].fromindex(x):variables[toaxis].fromindex(y) for x, y in values.items()} 
-#        else: values = {self.variables[fromaxis](x):variables[toaxis](y) for x, y in values.items()} 
-#        newdataset = self.dataset.sel({fromaxis:list(values.keys())}).rename(name_dict={fromaxis:toaxis})
-#        newvariables = self.variables.copy()    
-#        newvariables[toaxis] = variables[toaxis]
-#        newdataset.coords[toaxis] = pd.Index(list(values.values()), name=toaxis)  
-#        return self.__class__(newdataset, variables=newvariables, name=kwargs.get('name', self.name))
+    def reaxis(self, fromaxis, toaxis, values, variables, *args, **kwargs):
+        try: values = {self.variables[fromaxis].fromindex(x):variables[toaxis].fromindex(y) for x, y in values.items()} 
+        except: 
+            try: values = {self.variables[fromaxis].fromstr(x):variables[toaxis].fromstr(y) for x, y in values.items()} 
+            except: values = {self.variables[fromaxis](x):variables[toaxis](y) for x, y in values.items()}        
+        newdataset = self.dataset.sel({fromaxis:list(values.keys())}).rename(name_dict={fromaxis:toaxis})
+        newvariables = self.variables.copy()    
+        newvariables[toaxis] = variables[toaxis]
+        newdataset.coords[toaxis] = pd.Index(list(values.values()), name=toaxis)  
+        return self.__class__(newdataset, variables=newvariables, name=kwargs.get('name', self.name))        
         
     def __getitem__(self, items): return self.__getitem(items)
     @typedispatcher
