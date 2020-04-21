@@ -232,7 +232,7 @@ class GroupBy:
         axisvariable = headertype(list(axisgroups.keys()))
         return xarray, datavariable, axisvariable        
 
-    
+
 @Transformation.register(required=('how',), defaults={'how':'linear', 'fill':None},
                          xarray_funcs={'interpolate':xar.interpolate}, varray_funcs={'factory':var.varray_fromvalues})
 class Interpolate:
@@ -285,14 +285,6 @@ class Inversion(object):
         xarray = self.xarray_funcs['factory']({axis:newnarray}, axes=newaxes, attrs=attrs, forcedataset=False) 
         return xarray   
    
-
-
-
-
-
-
-
-
-
+    
 
 
