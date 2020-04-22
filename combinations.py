@@ -48,7 +48,10 @@ def combination(function):
 @arraytable_combine
 @combination
 def merge(dataarray, other, *args, axis, **kwargs):
-    dataarray, other = dataarray.expand_dims(axis), other.expand_dims(axis)
+    try: dataarray = dataarray.expand_dims(axis)
+    except ValueError: pass
+    try: other = other.expand_dims(axis)
+    except ValueError: pass
     newdataarray = xr.concat([dataarray, other], dim=axis, data_vars='all')
     return newdataarray
 
@@ -63,7 +66,8 @@ def concat(dataarray, other, *args, axis, **kwargs):
 @arraytable_combine
 @combination
 def append(dataarray, other, *args, axis, **kwargs):  
-    other = other.expand_dims(axis)
+    try: other = other.expand_dims(axis)
+    except ValueError: pass
     newdataarray = xr.concat([dataarray, other], dim=axis, data_vars='all')
     return newdataarray
 

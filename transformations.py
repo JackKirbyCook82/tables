@@ -230,7 +230,7 @@ class Expansion:
         newaxes = ODict([(key, value) if key != axis else (axis, newvarray) for key, value in axes.items()]) 
         
         assert len(newvarray) == len(set(newvarray)) 
-        xarray = self.xarray_funcs['factory'](ODict([(dataarray.name, newnarray)]), axes=newaxes, attrs=attrs, forcedataset=False) 
+        xarray = self.xarray_funcs['fromvalues'](ODict([(dataarray.name, newnarray)]), axes=newaxes, attrs=attrs, forcedataset=False) 
         axisvariable = headertype(newvarray)
         return xarray, datavariable, axisvariable
 
@@ -246,12 +246,13 @@ class Extension:
         axes = ODict([(key, value) for key, value in zip(coords.to_index().names, coords.to_index().levels)]) 
         index = dataarray.get_axis_num(axis)    
 
-        newnarray = self.narray_funcs[how](narray, *args, index=index, **kwargs)
-        newvarray = self.varray_funcs['fromvalues'](values, *args, **kwargs)
+        newnarray = self.narray_funcs[how](narray, *args, index=index, values=values, **kwargs)
+        newvarray = self.varray_funcs['fromvalues'](values, *args, variable=axisvariable, **kwargs)
         newaxes = ODict([(key, value) for key, value in axes.items()]) 
-        
+        newaxes[axis] = newvarray
+    
         assert len(newvarray) == len(set(newvarray)) 
-        xarray = self.xarray_funcs['factory'](ODict([(dataarray.name, newnarray)]), axes=newaxes, attrs=attrs, forcedataset=False) 
+        xarray = self.xarray_funcs['fromvalues'](ODict([(dataarray.name, newnarray)]), axes=newaxes, attrs=attrs, forcedataset=False) 
         axisvariable = headertype(newvarray)
         return xarray, datavariable, axisvariable
         

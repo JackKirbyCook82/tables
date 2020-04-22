@@ -341,12 +341,18 @@ class ArrayTable(TableBase):
     def isel(self, **axes):
         axes = {key:axes.get(key, slice(None)) for key in self.headerkeys}
         newdataset = self.dataset.isel(**axes)
+        for axis in axes:
+            try: newdataset = newdataset.expand_dims(axis) 
+            except: pass
         newdataset.attrs = self.dataset.attrs
         return self.__class__(newdataset, variables=self.variables.copy(), name=self.name) 
     
     def sel(self, **axes):
         axes = {key:axes.get(key, self.headers[key]) for key in self.headerkeys}
         newdataset = self.dataset.sel(**axes)
+        for axis in axes:
+            try: newdataset = newdataset.expand_dims(axis) 
+            except: pass
         newdataset.attrs = self.dataset.attrs
         return self.__class__(newdataset, variables=self.variables.copy(), name=self.name) 
  
@@ -354,6 +360,9 @@ class ArrayTable(TableBase):
         axes = {key:axes.get(key, self.headers[key].value) for key in self.headerkeys}
         axes = {key:[self.variables[key](value) for value in values] for key, values in axes.items()}
         newdataset = self.dataset.sel(**axes)
+        for axis in axes:
+            try: newdataset = newdataset.expand_dims(axis) 
+            except: pass
         newdataset.attrs = self.dataset.attrs
         return self.__class__(newdataset, variables=self.variables.copy(), name=self.name) 
     
@@ -361,6 +370,9 @@ class ArrayTable(TableBase):
         axes = {key:axes.get(key, self.headers[key].index) for key in self.headerkeys}
         axes = {key:[self.variables[key].fromindex(value) for value in values] for key, values in axes.items()}
         newdataset = self.dataset.sel(**axes)
+        for axis in axes:
+            try: newdataset = newdataset.expand_dims(axis) 
+            except: pass
         newdataset.attrs = self.dataset.attrs
         return self.__class__(newdataset, variables=self.variables.copy(), name=self.name) 
     
@@ -424,7 +436,6 @@ class ArrayTable(TableBase):
 
     def addscope(self, axis, value, variable):
         assert axis not in self.keys
-        value = variable(value)
         newdataset = self.dataset.assign_coords(**{axis:value})
         newvariables = self.variables.update({axis:variable})
         return self.__class__(newdataset, variables=newvariables, name=self.name) 

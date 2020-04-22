@@ -159,7 +159,7 @@ def arraytable_combine(function):
         assert axis not in [datakey, *otherdatakeys]
         assert all([dict(table.variables) == dict(other.variables) for other in others])
         
-        others = [align_arraytables(table, other, *args, method='outer', **kwargs)[-1] for other in others]         
+        others = [align_arraytables(table, other, *args, method='outer', noncoreaxes=axes, **kwargs)[-1] for other in others]         
         dataarray, otherdataarrays = table.dataarrays[datakey], [list(other.dataarrays.values())[0] for other in others]
         newdataarray = function(dataarray, otherdataarrays, *args, axis=axis, **kwargs)
         newvariables = table.variables.copy()
