@@ -91,20 +91,63 @@ class Scale:
         datavariable = datavariable.transformation(*args, method='scale', how=how, axis=axis, **kwargs)
         return xarray, datavariable, axisvariable
      
-
-@Transformation.register(required=('how', 'by'),
-                         xarray_funcs={'summation':xar.summation, 'average':xar.average, 'stdev':xar.stdev, 'minimum':xar.minimum, 'maximum':xar.maximum}, 
-                         varray_funcs={'summation':var.summation, 'couple':var.couple, 'minimum':var.minimum, 'maximum':var.maximum})
-class Reduction: 
-    def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, by, **kwargs):
+        
+@Transformation.register(varray_funcs={'boundary':var.boundary})
+class Boundary:
+    def execute(self, dataarray, *args, axis, datavariable, axisvariable, **kwargs):
         varray = getvarray(dataarray, axis, axisvariable)
-        xarray = self.xarray_funcs[how](dataarray, *args, axis=axis, **kwargs)
-        varray = self.varray_funcs[by](varray, *args, axis=axis, **kwargs)  
-        xarray = xarray.assign_coords(**{axis:str(varray)}).expand_dims(axis)
-        xarray.coords[axis] = pd.Index([varray], name=axis)      
+        varray = self.varray_funcs['boundary'](varray, *args, **kwargs)
+        xarray = setvarray(dataarray, axis, varray)
         xarray.name = dataarray.name
-        datavariable = datavariable.transformation(*args, method='reduction', how=how, **kwargs)
+        axisvariable = headertype(varray)        
+        return xarray, datavariable, axisvariable  
+
+
+@Transformation.register(required=('how',), varray_funcs={'consolidate':var.consolidate})
+class Consolidate: 
+    def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, **kwargs):
+        varray = getvarray(dataarray, axis, axisvariable)
+        varray = self.varray_funcs['consolidate'](varray, *args, how=how, **kwargs)
+        xarray = setvarray(dataarray, axis, varray)
+        xarray.name = dataarray.name
         axisvariable = headertype(varray)
+        return xarray, datavariable, axisvariable
+
+
+@Transformation.register(required=('how',), varray_funcs={'unconsolidate':var.unconsolidate})
+class Unconsolidate:
+    def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, **kwargs):
+        varray = getvarray(dataarray, axis, axisvariable)
+        varray = self.varray_funcs['unconsolidate'](varray, *args, how=how, **kwargs)
+        xarray = setvarray(dataarray, axis, varray)
+        xarray.name = dataarray.name
+        axisvariable = headertype(varray)        
+        return xarray, datavariable, axisvariable
+
+
+@Transformation.register(required=('how',), 
+                         xarray_funcs={'upper':xar.upper_cumulate, 'lower':xar.lower_cumulate}, 
+                         varray_funcs={'upper':var.upper_cumulate, 'lower':var.lower_cumulate})
+class Cumulate: 
+    def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, **kwargs):
+        varray = getvarray(dataarray, axis, axisvariable)
+        xarray = self.xarray_funcs[how](dataarray, *args, axis=axis, direction=how, **kwargs)
+        varray = self.varray_funcs[how](varray, *args, direction=how, **kwargs)
+        xarray = setvarray(xarray, axis, varray)
+        xarray.name = dataarray.name
+        return xarray, datavariable, axisvariable
+    
+    
+@Transformation.register(required=('how',),  
+                         xarray_funcs={'upper':xar.upper_uncumulate, 'lower':xar.lower_uncumulate}, 
+                         varray_funcs={'upper':var.upper_uncumulate, 'lower':var.lower_uncumulate})
+class Uncumulate: 
+    def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, **kwargs):
+        varray = getvarray(dataarray, axis, axisvariable)
+        xarray = self.xarray_funcs[how](dataarray, *args, axis=axis, direction=how, **kwargs)
+        varray = self.varray_funcs[how](varray, *args, direction=how, **kwargs)
+        xarray = setvarray(xarray, axis, varray)
+        xarray.name = dataarray.name
         return xarray, datavariable, axisvariable
 
 
@@ -139,87 +182,8 @@ class Moving:
         xarray.name = dataarray.name
         datavariable = datavariable.transformation(*args, method='moving', how=how, period=period, **kwargs)
         axisvariable = headertype(varray)
-        return xarray, datavariable, axisvariable        
+        return xarray, datavariable, axisvariable  
 
-    
-@Transformation.register(required=('how',), 
-                         xarray_funcs={'upper':xar.upper_cumulate, 'lower':xar.lower_cumulate}, 
-                         varray_funcs={'upper':var.upper_cumulate, 'lower':var.lower_cumulate})
-class Cumulate: 
-    def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, **kwargs):
-        varray = getvarray(dataarray, axis, axisvariable)
-        xarray = self.xarray_funcs[how](dataarray, *args, axis=axis, direction=how, **kwargs)
-        varray = self.varray_funcs[how](varray, *args, direction=how, **kwargs)
-        xarray = setvarray(xarray, axis, varray)
-        xarray.name = dataarray.name
-        return xarray, datavariable, axisvariable
-    
-    
-@Transformation.register(required=('how',),  
-                         xarray_funcs={'upper':xar.upper_uncumulate, 'lower':xar.lower_uncumulate}, 
-                         varray_funcs={'upper':var.upper_uncumulate, 'lower':var.lower_uncumulate})
-class Uncumulate: 
-    def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, **kwargs):
-        varray = getvarray(dataarray, axis, axisvariable)
-        xarray = self.xarray_funcs[how](dataarray, *args, axis=axis, direction=how, **kwargs)
-        varray = self.varray_funcs[how](varray, *args, direction=how, **kwargs)
-        xarray = setvarray(xarray, axis, varray)
-        xarray.name = dataarray.name
-        return xarray, datavariable, axisvariable
-        
-    
-@Transformation.register(required=('how',), varray_funcs={'consolidate':var.consolidate})
-class Consolidate: 
-    def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, **kwargs):
-        varray = getvarray(dataarray, axis, axisvariable)
-        varray = self.varray_funcs['consolidate'](varray, *args, how=how, **kwargs)
-        xarray = setvarray(dataarray, axis, varray)
-        xarray.name = dataarray.name
-        axisvariable = headertype(varray)
-        return xarray, datavariable, axisvariable
-
-
-@Transformation.register(required=('how',), varray_funcs={'unconsolidate':var.unconsolidate})
-class Unconsolidate:
-    def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, **kwargs):
-        varray = getvarray(dataarray, axis, axisvariable)
-        varray = self.varray_funcs['unconsolidate'](varray, *args, how=how, **kwargs)
-        xarray = setvarray(dataarray, axis, varray)
-        xarray.name = dataarray.name
-        axisvariable = headertype(varray)        
-        return xarray, datavariable, axisvariable
-
-    
-@Transformation.register(required=('how',), xarray_funcs={'expand':nar.expand, 'factory':xar.xarray_fromvalues}, varray_funcs={'expand':var.expand})
-class Expansion:
-    def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, **kwargs):
-        narray, coords, attrs = dataarray.values, dataarray.coords, dataarray.attrs 
-        axes = ODict([(key, value) for key, value in zip(coords.to_index().names, coords.to_index().levels)])        
-        
-        varray = getvarray(dataarray, axis, axisvariable)  
-        index = dataarray.get_axis_num(axis)         
-              
-        newvarray = self.varray_funcs['expand'](varray, *args, **kwargs)       
-        expansions = [sum([newitem in item for newitem in newvarray]) for item in varray]
-        newnarray = self.xarray_funcs['expand'](narray, *args, index=index, expansions=expansions, how=how, **kwargs)              
-        newaxes = ODict([(key, value) if key != axis else (axis, newvarray) for key, value in axes.items()]) 
-        
-        assert len(newvarray) == len(set(newvarray))    
-        xarray = self.xarray_funcs['factory'](ODict([(dataarray.name, newnarray)]), axes=newaxes, attrs=attrs, forcedataset=False) 
-        axisvariable = headertype(newvarray)
-        return xarray, datavariable, axisvariable
-
-    
-@Transformation.register(varray_funcs={'boundary':var.boundary})
-class Boundary:
-    def execute(self, dataarray, *args, axis, datavariable, axisvariable, **kwargs):
-        varray = getvarray(dataarray, axis, axisvariable)
-        varray = self.varray_funcs['boundary'](varray, *args, **kwargs)
-        xarray = setvarray(dataarray, axis, varray)
-        xarray.name = dataarray.name
-        axisvariable = headertype(varray)        
-        return xarray, datavariable, axisvariable   
-    
 
 @Transformation.register(required=('how', 'agg',), xarray_funcs={'groupby':xar.groupby}, 
                          varray_funcs={'groups':var.groupby_bins, 'contains':var.groupby_contains, 'overlaps':var.groupby_overlaps})
@@ -230,18 +194,78 @@ class GroupBy:
         xarray = self.xarray_funcs['groupby'](dataarray, *args, axis=axis, axisgroups=axisgroups, agg=agg, **kwargs)
         xarray.name = dataarray.name
         axisvariable = headertype(list(axisgroups.keys()))
-        return xarray, datavariable, axisvariable        
+        return xarray, datavariable, axisvariable
 
+
+@Transformation.register(required=('how', 'by'),
+                         xarray_funcs={'summation':xar.summation, 'average':xar.average, 'stdev':xar.stdev, 'minimum':xar.minimum, 'maximum':xar.maximum}, 
+                         varray_funcs={'summation':var.summation, 'couple':var.couple, 'minimum':var.minimum, 'maximum':var.maximum})
+class Reduction: 
+    def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, by, **kwargs):
+        varray = getvarray(dataarray, axis, axisvariable)
+        xarray = self.xarray_funcs[how](dataarray, *args, axis=axis, **kwargs)
+        varray = self.varray_funcs[by](varray, *args, axis=axis, **kwargs)  
+        xarray = xarray.assign_coords(**{axis:str(varray)}).expand_dims(axis)
+        xarray.coords[axis] = pd.Index([varray], name=axis)      
+        xarray.name = dataarray.name
+        datavariable = datavariable.transformation(*args, method='reduction', how=how, **kwargs)
+        axisvariable = headertype(varray)
+        return xarray, datavariable, axisvariable
+
+
+@Transformation.register(required=('how',),
+                         narray_funcs={'division':nar.equaldivision, 'broadcast':nar.equalbroadcast},
+                         xarray_funcs={'fromvalues':xar.xarray_fromvalues},
+                         varray_funcs={'expansion':var.expansion})
+class Expansion:
+    def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, **kwargs):
+        narray, coords, attrs = dataarray.values, dataarray.coords, dataarray.attrs   
+        axes = ODict([(key, value) for key, value in zip(coords.to_index().names, coords.to_index().levels)]) 
+        varray = getvarray(dataarray, axis, axisvariable)
+        index = dataarray.get_axis_num(axis)    
+
+        newvarray = self.varray_funcs['expansion'](varray, *args, **kwargs) 
+        values = [sum([newitem in item for newitem in newvarray]) for item in varray]
+        newnarray = self.narray_funcs[how](narray, *args, index=index, values=values, **kwargs) 
+        newaxes = ODict([(key, value) if key != axis else (axis, newvarray) for key, value in axes.items()]) 
+        
+        assert len(newvarray) == len(set(newvarray)) 
+        xarray = self.xarray_funcs['factory'](ODict([(dataarray.name, newnarray)]), axes=newaxes, attrs=attrs, forcedataset=False) 
+        axisvariable = headertype(newvarray)
+        return xarray, datavariable, axisvariable
+
+
+@Transformation.register(required=('how',),
+                         narray_funcs={'distribution':nar.distribution},
+                         xarray_funcs={'fromvalues':xar.xarray_fromvalues},
+                         varray_funcs={'fromvalues':var.varray_fromvalues})   
+class Extension:
+    def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, basis, values, **kwargs):
+        dataarray = dataarray.expand_dims(axis)  
+        narray, coords, attrs = dataarray.values, dataarray.coords, dataarray.attrs   
+        axes = ODict([(key, value) for key, value in zip(coords.to_index().names, coords.to_index().levels)]) 
+        index = dataarray.get_axis_num(axis)    
+
+        newnarray = self.narray_funcs[how](narray, *args, index=index, **kwargs)
+        newvarray = self.varray_funcs['fromvalues'](values, *args, **kwargs)
+        newaxes = ODict([(key, value) for key, value in axes.items()]) 
+        
+        assert len(newvarray) == len(set(newvarray)) 
+        xarray = self.xarray_funcs['factory'](ODict([(dataarray.name, newnarray)]), axes=newaxes, attrs=attrs, forcedataset=False) 
+        axisvariable = headertype(newvarray)
+        return xarray, datavariable, axisvariable
+        
 
 @Transformation.register(required=('how',), defaults={'how':'linear', 'fill':None},
-                         xarray_funcs={'interpolate':xar.interpolate}, varray_funcs={'factory':var.varray_fromvalues})
+                         xarray_funcs={'interpolate':xar.interpolate}, 
+                         varray_funcs={'fromvalues':var.varray_fromvalues})
 class Interpolate:
     def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, values, **kwargs):
         assert axisvariable.datatype == 'num'
         varray = getvarray(dataarray, axis, axisvariable)      
         dataarray.coords[axis] = pd.Index([item.value for item in varray], name=axis)
         xarray = self.xarray_funcs['interpolate'](dataarray, *args, axis=axis, values=values, how=how, **kwargs)
-        varray = self.varray_funcs['factory'](values, *args, variable=axisvariable, how=how, **kwargs)
+        varray = self.varray_funcs['fromvalues'](values, *args, variable=axisvariable, how=how, **kwargs)
         xarray = setvarray(xarray, axis, varray)
         xarray.name = dataarray.name
         return xarray, datavariable, axisvariable
@@ -250,8 +274,9 @@ class Interpolate:
 class Inversion(object):
     required=('how',)
     defaults = {'how':'linear', 'fill':None}
-    xarray_funcs={'inversion':nar.inversion, 'factory':xar.xarray_fromvalues}
-    varray_funcs={'factory':var.varray_fromvalues}
+    xarray_funcs={'fromvalues':xar.xarray_fromvalues}
+    narray_funcs={'inversion':nar.inversion}
+    varray_funcs={'fromvalues':var.varray_fromvalues}
 
     def __repr__(self): return '{}({})'.format(self.__class__.__name__, ', '.join(['='.join([key, str(value)]) for key, value in self.hyperparms.items()]))    
     def __init__(self, **hyperparms): 
@@ -277,12 +302,12 @@ class Inversion(object):
         headervalues = [item.value for item in varray]   
         index = dataarray.get_axis_num(axis)  
         
-        newnarray = self.xarray_funcs['inversion'](narray, headervalues, values, *args, index=index, axis=axis, how=how, **kwargs)
-        newvarray = self.varray_funcs['factory'](values, *args, variable=datavariable, how=how, **kwargs)                           
+        newnarray = self.narray_funcs['inversion'](narray, headervalues, values, *args, index=index, axis=axis, how=how, **kwargs)
+        newvarray = self.varray_funcs['fromvalues'](values, *args, variable=datavariable, how=how, **kwargs)                           
         newaxes = ODict([(key, value) if key != axis else (dataarray.name, newvarray) for key, value in axes.items()]) 
 
         assert len(newvarray) == len(set(newvarray))  
-        xarray = self.xarray_funcs['factory']({axis:newnarray}, axes=newaxes, attrs=attrs, forcedataset=False) 
+        xarray = self.xarray_funcs['fromvalues']({axis:newnarray}, axes=newaxes, attrs=attrs, forcedataset=False) 
         return xarray   
    
     
