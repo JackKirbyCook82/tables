@@ -446,24 +446,22 @@ class ArrayTable(TableBase):
         newdataset.attrs = self.dataset.attrs
         return self.__class__(newdataset, variables=self.variables.copy(), name=self.name)
     
-    def squeeze(self, *axes):
-        assert all([axis in self.axeskeys for axis in axes])
+    def squeeze(self, axis):
+        assert axis in self.axeskeys 
         newdataset = self.dataset
-        for axis in axes: 
-            if axis in self.scopekeys: pass
-            elif axis in self.headerkeys:
-                if len(self.dataset.coords[axis]) != 1: raise ValueError(axis)
-                newdataset = newdataset.squeeze(dim=axis, drop=False)
-            else: raise ValueError(axis)
+        if axis in self.scopekeys: pass
+        elif axis in self.headerkeys:
+            if len(self.dataset.coords[axis]) != 1: raise ValueError(axis)
+            newdataset = newdataset.squeeze(dim=axis, drop=False)
+        else: raise ValueError(axis)
         newdataset.attrs = self.dataset.attrs
         return self.__class__(newdataset, variables=self.variables.copy(), name=self.name)
 
-    def removescope(self, *axes):
-        assert all([axis in self.scopekeys for axis in axes])
+    def removescope(self, axis):
+        assert axis in self.scopekeys 
         newdataset, newvariables = self.dataset, self.variables.copy()
-        for axis in axes: 
-            newdataset = newdataset.drop(axis)
-            newvariables.pop(axis)
+        newdataset = newdataset.drop(axis)
+        newvariables.pop(axis)
         newdataset.attrs = self.dataset.attrs        
         return self.__class__(newdataset, variables=newvariables, name=self.name)
 

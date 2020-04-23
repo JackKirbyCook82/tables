@@ -113,7 +113,7 @@ def arraytable_operation(function):
         
 
 def arraytable_combination(function):
-    def wrapper(tables, *args, axis=None, axes=[], noncoreaxis=None, noncoreaxes=[], **kwargs):
+    def wrapper(tables, *args, axis=None, axes=[], noncoreaxis=None, noncoreaxes=[], coreaxis=None, coreaxes=[], **kwargs):
         table, others = _aslist(tables)[0], _aslist(tables)[1:]
         if not others: return table
         assert all([isinstance(other, type(table)) for other in others])        
@@ -123,6 +123,7 @@ def arraytable_combination(function):
         variablesname = tables[0].variables.name        
 
         axes = [item for item in [*_aslist(axis), *_aslist(axes)] if item is not None]
+        coreaxes = [item for item in [*_aslist(coreaxis), *_aslist(coreaxes)] if item is not None]
         noncoreaxes = [item for item in [*_aslist(noncoreaxis), *_aslist(noncoreaxes)] if item is not None]
         
         for noncoreaxis in noncoreaxes:
@@ -131,11 +132,18 @@ def arraytable_combination(function):
             for i in range(len(others)): 
                 try: others[i] = others[i].squeeze(noncoreaxis)
                 except: pass
-        
+ 
         for noncoreaxis in noncoreaxes:
             table = table.removescope(noncoreaxis) if noncoreaxis in table.scopekeys else table
-            others = [other.removescope(noncoreaxis) if noncoreaxis in other.scopekeys else other for other in others]        
-        
+            others = [other.removescope(noncoreaxis) if noncoreaxis in other.scopekeys else other for other in others] 
+       
+        for coreaxis in coreaxes:
+            try: table = table.expand(coreaxis)
+            except: pass
+            for i in range(len(others)): 
+                try: others[i] = others[i].expand(coreaxis)
+                except: pass
+
         newxarray, newvariables = function(table, others, *args, axes=axes, **kwargs)        
         try: newdataset = newxarray.to_dataset()
         except: newdataset = newxarray
