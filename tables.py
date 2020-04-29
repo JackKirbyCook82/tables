@@ -13,6 +13,7 @@ import openpyxl
 import numpy as np
 import xarray as xr
 from scipy import stats
+from scipy.interpolate import interp1d
 from numbers import Number
 from collections import OrderedDict as ODict
 from collections import namedtuple as ntuple
@@ -49,6 +50,13 @@ class HistArray(ntuple('HistArray', 'weightskey weights axiskey axis index scope
         assert len(weights) == len(axis) == len(index)
         assert isinstance(scope, dict)
         return super().__new__(cls, weightskey, weights, axiskey, axis, index, scope)
+    
+    
+class CurveArray(ntuple('CurveArray', 'xkey xvalues ykey yvalues scope')):
+    def __new__(cls, xkey, xvalues, ykey, yvalues, scope):
+        assert len(yvalues) == len(xvalues)
+        assert isinstance(scope, dict)
+        return super().__new__(cls, xkey, xvalues, ykey, yvalues, scope)
     
 
 class TableBase(ABC):
@@ -97,6 +105,57 @@ class TableBase(ABC):
     def keys(self): pass
  
 
+class CurveTable(TableBase):
+    def __call__(self, xvalue): return self.__curve(xvalue)
+    def __init__(self, curvearray, *args, variables, **kwargs):
+        assert isinstance(curvearray, CurveArray)        
+        super().__init__(curvearray, *args, variables=variables, **kwargs)      
+        self.__curve = interp1d(self.xvalues, self.yvalues, kind='linear', bounds_error=True) 
+                  
+    @property
+    def curvearray(self): return self.data    
+        
+    @property
+    def xvalues(self): return self.data.xvalues  
+    @property
+    def xaxis(self): return [self.variables[self.xkey].fromindex(xvalue) for xvalue in self.xvalues]
+    @property
+    def yvalues(self): return self.data.yvalues
+    @property
+    def yaxis(self): return [self.variables[self.ykey].fromindex(yvalue) for yvalue in self.yvalues]       
+    @property
+    def scope(self): return self.data.scope 
+    @property
+    def curve(self): return self.__curve
+
+    @property
+    def xkey(self): return self.data.xkey  
+    @property
+    def ykey(self): return self.data.ykey 
+    @property
+    def scopekeys(self): return tuple(self.data.scope.keys())
+    @property
+    def keys(self): return (self.data.xkey, self.data.ykey, *self.data.scope.keys())
+
+    @property
+    def layers(self): return 1
+    @property
+    def dims(self): return 2
+    @property
+    def shape(self): return (2, len(self.data.xvalues))
+    
+    def __len__(self): return len(self.data.xvalues)       
+    def __iter__(self): 
+        for xvalue, xaxis, yvalue, yaxis in zip(self.xvalues, self.xaxis, self.yvalues, self.yaxis):
+            yield (xvalue, xaxis), (yvalue, yaxis)   
+    
+    def retag(self, **tags): 
+        variables, scope = self.variables.copy(), self.scope.copy()
+        for oldkey, newkey in tags.items(): variables[newkey], scope[newkey] = variables[oldkey], scope[oldkey]
+        data = CurveArray(tags.get(self.data.xkey, self.data.xkey), self.data.xvalues, tags.get(self.data.ykey, self.data.ykey), self.data.yvalues, scope)
+        return self.__class__(data, variables=variables, name=self.name)    
+    
+    
 class HistTable(TableBase):
     def __call__(self, size): return self.__histogram.rvs(size=(1, size))[0]            
     def __init__(self, histarray, *args, variables, **kwargs):
@@ -510,21 +569,21 @@ class ArrayTable(TableBase):
     def __tohistogram(self, datatype, *args, **kwargs): raise KeyError(datatype)    
     
     @__tohistogram.register('num')
-    def __fromnum(self, *args, **kwargs): 
+    def __histogrameFromNum(self, *args, **kwargs): 
         axisvalues = [str(value) for value in self.headers[self.headerkeys[0]]]
         indexvalues =  self.headers[self.headerkeys[0]]
         weightvalues = self.arrays[self.datakeys[0]]
         return indexvalues, axisvalues, weightvalues
     
     @__tohistogram.register('range')
-    def __fromrange(self, *args, how, **kwargs):
+    def __histogramFromRange(self, *args, how, **kwargs):
         axisvalues = [str(value) for value in self.headers[self.headerkeys[0]]]
         indexvalues = np.array([axisvalue.consolidate(*args, how=how, **kwargs).value for axisvalue in axisvalues])
         weightvalues = self.arrays[self.datakeys[0]]
         return indexvalues, axisvalues, weightvalues     
     
     @__tohistogram.register('category')
-    def __fromcategory(self, *args, **kwargs):
+    def __histogramFromCategory(self, *args, **kwargs):
         axisvalues = self.variables[self.headerkeys[0]].spec.categories 
         indexvalues = self.variables[self.headerkeys[0]].spec.indexes 
         b = self.arrays[self.datakeys[0]]
@@ -535,10 +594,27 @@ class ArrayTable(TableBase):
         weightvalues = np.linalg.solve(a, b)
         return indexvalues, axisvalues, weightvalues
             
-
-
-
-
+    def tocurve(self, args, **kwargs):
+        assert all([self.layers == 1, self.dims == 1])
+        datatype = self.variables[self.headerkeys[0]].datatype
+        xvalues, yvalues = self.__tocurve(datatype, *args, **kwargs)        
+        curvearray = CurveArray(self.headerkeys[0], xvalues, self.datakeys[0], yvalues, self.scope)
+        return CurveTable(curvearray, *args, name=self.name, variables=self.variables, **kwargs)  
+    
+    @keydispatcher
+    def __tocurve(self, datatype, *args, **kwargs): raise KeyError(datatype)
+    
+    @__tocurve.register('num')
+    def __curveFromNum(self, *args, **kwargs):
+        xvalues = np.array([header.value for header in self.headers[self.headerkeys[0]]])
+        yvalues = self.arrays[self.datakeys[0]]
+        return xvalues, yvalues
+    
+    @__tocurve.register('range')
+    def __curveFromRange(self, *args, how, **kwargs):
+        xvalues = np.array([header.consolidate(*args, how=how, **kwargs).value for header in self.headers[self.headerkeys[0]]])             
+        yvalues = self.arrays[self.datakeys[0]]
+        return xvalues, yvalues
 
 
 
