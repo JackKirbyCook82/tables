@@ -543,7 +543,7 @@ class ArrayTable(TableBase):
         for key in self.headerkeys: dataset.coords[key] = pd.Index([item.value for item in self.dataset.coords[key].values], name=key)
         for key in self.scopekeys: dataset.coords[key] = self.dataset.coords[key]
         dataframe = dataframe_fromxarray(dataset) 
-        return FlatTable(dataframe, variables=self.variables.copy(), name=self.name)     
+        return FlatTable(dataframe, variables=self.variables.copy(), name=self.name)        
 
     def tohistogram(self, *args, **kwargs): 
         assert all([self.layers == 1, self.dims == 1])
