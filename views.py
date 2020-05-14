@@ -7,7 +7,6 @@ Created on Fri Mar 15 2019
 """
 
 from abc import ABC, abstractmethod
-import copy
 import numpy as np
 from collections import namedtuple as ntuple
 from collections import OrderedDict as ODict
@@ -16,7 +15,7 @@ from utilities.strings import uppercase
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
-__all__ = ['ArrayTableView', 'FlatTableView', 'HistTableView']
+__all__ = ['ArrayTableView', 'FlatTableView', 'HistTableView', 'CurveTableView']
 __copyright__ = "Copyright 2018, Jack Kirby Cook"
 __license__ = ""
 
@@ -32,6 +31,7 @@ _WEIGHTSFORMAT = 'WEIGHTS = {key}: \n{values}'
 _AXISFORMAT = 'AXIS = {key}: \n{values}'
 _INDEXFORMAT = 'INDEX = {key}: \n{values}'
 _TOTALFORMAT = 'TOTAL = {total}'
+_CURVEFORMAT = '{axis} = {key}: \n{values}'
 
 
 _flatten = lambda nesteditems: [item for items in nesteditems for item in items]
@@ -50,7 +50,7 @@ _weightstring = lambda weightskey, weights: _WEIGHTSFORMAT.format(key=uppercase(
 _axisstring = lambda axiskey, axis: _AXISFORMAT.format(key=uppercase(axiskey), values=axis)
 _indexstring = lambda axiskey, index: _INDEXFORMAT.format(key=uppercase(axiskey), values=index)
 _totalstring = lambda total: _TOTALFORMAT.format(total=total)
-
+_curvestring = lambda axis, key, values: _CURVEFORMAT.format(key=uppercase(key), values=values)
 
 class Structure(ntuple('Structure', 'layers dims shape')):
     @property
@@ -84,6 +84,17 @@ class TableViewBase(ABC):
     @abstractmethod
     def strings(self): pass
 
+
+class CurveTableView(TableViewBase):
+    @property
+    def xstrings(self): return _curvestring('XAXIS', self.table.xaxis, self.table.xvalues)
+    @property
+    def ystrings(self): return _curvestring('YAXIS', self.table.yaxis, self.table.yvalues)
+    @property
+    def scopestrings(self): return '\n'.join([_scopestring(scopekey=scopekey, scopevalues=scopevalues) for scopekey, scopevalues in self.table.scope.items()])
+    @property
+    def strings(self): return _filterempty([self.xstrings, self.ystrings, self.scopestrings])
+    
 
 class HistTableView(TableViewBase):
     @property

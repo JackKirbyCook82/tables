@@ -10,8 +10,8 @@ import pandas as pd
 import numpy as np
 import json
 
-from tables.views import ArrayTableView, FlatTableView, HistTableView
-from tables.tables import ArrayTable, FlatTable, HistTable
+from tables.views import ArrayTableView, FlatTableView, HistTableView, CurveTableView
+from tables.tables import ArrayTable, FlatTable, HistTable, CurveTable
 import tables.combinations as combinations
 import tables.operations as operations
 import tables.transformations as transformations
@@ -32,16 +32,18 @@ _NPMAPPING = {"linewidth":"linewidth", "threshold":"threshold", "precision":"pre
 def apply_options():
     for key, value in _PDMAPPING.items(): pd.set_option(key, _OPTIONS[value])
     np.set_printoptions(**{key:_OPTIONS[value] for key, value in _NPMAPPING.items()})
-
     global ArrayTableView, ArrayTable
     global FlatTableView, FlatTable
     global HistTableView, HistTable
+    global CurveTableView, CurveTable
     ArrayTableView = ArrayTableView.factory(framechar=_OPTIONS['framechar'], framewidth=_OPTIONS['linewidth'])
     FlatTableView = FlatTableView.factory(framechar=_OPTIONS['framechar'], framewidth=_OPTIONS['linewidth'])
     HistTableView = HistTableView.factory(framechar=_OPTIONS['framechar'], framewidth=_OPTIONS['linewidth'])
+    CurveTableView = CurveTableView.factory(framechar=_OPTIONS['framechar'], framewidth=_OPTIONS['linewidth'])
     ArrayTable = ArrayTable.factory(view=ArrayTableView)
     FlatTable = FlatTable.factory(view=FlatTableView)
     HistTable = HistTable.factory(view=HistTableView)
+    CurveTable = CurveTable.factory(view=CurveTableView)
 
 
 def set_options(**kwargs):
