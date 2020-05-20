@@ -569,13 +569,10 @@ class ArrayTable(TableBase):
         return index, weights     
         
     @keydispatcher
-    def __tohistogram(self, datatype, *args, **kwargs): raise KeyError(datatype)    
-    
-    @__tohistogram.register('num')
-    def __histogrameFromNum(self, *args, **kwargs): 
+    def __tohistogram(self, datatype, *args, **kwargs): 
         indexvalues = np.array([header.value for header in self.headers[self.headerkeys[0]]])        
         weightvalues = self.arrays[self.datakeys[0]]
-        return indexvalues, weightvalues
+        return indexvalues, weightvalues        
     
     @__tohistogram.register('range')
     def __histogramFromRange(self, *args, how, **kwargs):
