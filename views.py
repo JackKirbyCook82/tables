@@ -50,7 +50,8 @@ _weightstring = lambda weightskey, weights: _WEIGHTSFORMAT.format(key=uppercase(
 _axisstring = lambda axiskey, axis: _AXISFORMAT.format(key=uppercase(axiskey), values=axis)
 _indexstring = lambda axiskey, index: _INDEXFORMAT.format(key=uppercase(axiskey), values=index)
 _totalstring = lambda total: _TOTALFORMAT.format(total=total)
-_curvestring = lambda axis, key, values: _CURVEFORMAT.format(key=uppercase(key), values=values)
+_curvestring = lambda axis, key, values: _CURVEFORMAT.format(axis=axis, key=uppercase(key), values=values)
+
 
 class Structure(ntuple('Structure', 'layers dims shape')):
     @property
@@ -87,9 +88,9 @@ class TableViewBase(ABC):
 
 class CurveTableView(TableViewBase):
     @property
-    def xstrings(self): return _curvestring('XAXIS', self.table.xaxis, self.table.xvalues)
+    def xstrings(self): return _curvestring('XAXIS', self.table.xkey, self.table.xvalues)
     @property
-    def ystrings(self): return _curvestring('YAXIS', self.table.yaxis, self.table.yvalues)
+    def ystrings(self): return _curvestring('YAXIS', self.table.ykey, self.table.yvalues)
     @property
     def scopestrings(self): return '\n'.join([_scopestring(scopekey=scopekey, scopevalues=scopevalues) for scopekey, scopevalues in self.table.scope.items()])
     @property

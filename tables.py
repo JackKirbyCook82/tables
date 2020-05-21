@@ -15,7 +15,6 @@ import xarray as xr
 from scipy import stats
 from scipy.interpolate import interp1d
 from numbers import Number
-from decimal import Decimal
 from collections import OrderedDict as ODict
 from collections import namedtuple as ntuple
 
@@ -33,22 +32,24 @@ __license__ = ""
 
 
 AGGREGATIONS = {'sum':np.sum, 'avg':np.mean, 'max':np.max, 'min':np.min}
-PRECISION = 6
 
 _union = lambda x, y: list(set(x) | set(y))
 _intersection = lambda x, y: list(set(x) & set(y))
 _aslist = lambda items: [items] if not isinstance(items, (list, tuple)) else list(items)
 _filterempty = lambda items: [item for item in _aslist(items) if item]
-#_decimals = lambda item: abs(Decimal(str(item)).as_tuple().exponent)
-#_round = lambda items, decimals: np.around(items, decimals=decimals)
-#_normalize = lambda items: np.vectorize(lambda x, t: x/t)(items, items.sum())
-#_fudge = lambda items: np.vectorize(lambda x, xmax, delta: x if x != xmax else x + delta)(items, items.max(), _round(1-items.sum(), _decimals(items.sum())+1))
+_normalize = lambda items: np.vectorize(lambda x, t: x/t)(items, items.sum())
 _removezeros = lambda items: np.array([item if item > 0 else 0 for item in items])
 
 _replacenan = lambda dataarray, value: xr.where(~np.isnan(dataarray), dataarray, value)
 _replaceinf = lambda dataarray, value: xr.where(~np.isinf(dataarray), dataarray, value)
 _replaceneg = lambda dataarray, value: xr.where(dataarray >= 0, dataarray, value)
 _replacestd = lambda dataarray, value, std: xr.where(absolute(standardize(dataarray)) < std, dataarray, value)
+
+
+class EmptyHistArrayError(Exception):
+    def __init__(self, histarray): super().__init__(repr(histarray))
+class InvalidCurveError(Exception):
+    def __init__(self, curvearray): super().__init__(repr(curvearray))
 
 
 class HistArray(ntuple('HistArray', 'weightskey weights indexkey index scope')):
@@ -59,12 +60,14 @@ class HistArray(ntuple('HistArray', 'weightskey weights indexkey index scope')):
         assert isinstance(scope, dict)        
         return super().__new__(cls, weightskey, weights, indexkey, index, scope)
 
+    def __init__(self, *args, **kwargs):
+        if self.weights.sum() == 0: raise EmptyHistArrayError(self)
+
     def __call__(self, size): 
-        weights, i, imax = self.weights, 0, 5
-#        while weights.sum() != 1 and i <= imax: weights, i = _normalize(weights), i + 1
-#        if weights.sum() != 1: weights = _fudge(weights)
-        if weights.sum() != 1: raise ValueError(weights, weights.sum())
-        histogram = stats.rv_discrete(values=(self.index, weights))
+        try: weights = _normalize(self.weights)
+        except ZeroDivisionError: raise ZeroDivisionError(self.weights, self.weights.sum())
+        try: histogram = stats.rv_discrete(values=(self.index, weights))
+        except ValueError: raise ValueError(weights, weights.sum())
         return histogram.rvs(size=(1, size))[0]   
     
     
@@ -76,6 +79,9 @@ class CurveArray(ntuple('CurveArray', 'xkey xvalues ykey yvalues scope')):
         assert isinstance(scope, dict)
         return super().__new__(cls, xkey, xvalues, ykey, yvalues, scope)
  
+    def __init__(self, *args, **kwargs):
+        if len(self.xvalues) != len(set(self.xvalues)): raise InvalidCurveError(self)
+    
     def __call__(self, xvalue): 
         curve = interp1d(self.xvalues, self.yvalues, kind='linear', bounds_error=True)   
         return curve(xvalue)
