@@ -15,6 +15,7 @@ import xarray as xr
 from scipy import stats
 from scipy.interpolate import interp1d
 from numbers import Number
+from decimal import Decimal
 from collections import OrderedDict as ODict
 from collections import namedtuple as ntuple
 
@@ -32,12 +33,17 @@ __license__ = ""
 
 
 AGGREGATIONS = {'sum':np.sum, 'avg':np.mean, 'max':np.max, 'min':np.min}
+PRECISION = 6
 
 _union = lambda x, y: list(set(x) | set(y))
 _intersection = lambda x, y: list(set(x) & set(y))
 _aslist = lambda items: [items] if not isinstance(items, (list, tuple)) else list(items)
 _filterempty = lambda items: [item for item in _aslist(items) if item]
-_normalize = lambda items: np.array(items) / np.sum(np.array(items))
+#_decimals = lambda item: abs(Decimal(str(item)).as_tuple().exponent)
+#_round = lambda items, decimals: np.around(items, decimals=decimals)
+#_normalize = lambda items: np.vectorize(lambda x, t: x/t)(items, items.sum())
+#_fudge = lambda items: np.vectorize(lambda x, xmax, delta: x if x != xmax else x + delta)(items, items.max(), _round(1-items.sum(), _decimals(items.sum())+1))
+_removezeros = lambda items: np.array([item if item > 0 else 0 for item in items])
 
 _replacenan = lambda dataarray, value: xr.where(~np.isnan(dataarray), dataarray, value)
 _replaceinf = lambda dataarray, value: xr.where(~np.isinf(dataarray), dataarray, value)
@@ -50,8 +56,16 @@ class HistArray(ntuple('HistArray', 'weightskey weights indexkey index scope')):
     def __hash__(self): return hash((self.__class__.__name__, self.weightskey, tuple(self.weights), self.indexkey, tuple(self.index), tuple(self.scope.keys()), tuple(self.scope.values()),))    
     def __new__(cls, weightskey, weights, indexkey, index, scope):
         assert len(weights) == len(index)
-        assert isinstance(scope, dict)
+        assert isinstance(scope, dict)        
         return super().__new__(cls, weightskey, weights, indexkey, index, scope)
+
+    def __call__(self, size): 
+        weights, i, imax = self.weights, 0, 5
+#        while weights.sum() != 1 and i <= imax: weights, i = _normalize(weights), i + 1
+#        if weights.sum() != 1: weights = _fudge(weights)
+        if weights.sum() != 1: raise ValueError(weights, weights.sum())
+        histogram = stats.rv_discrete(values=(self.index, weights))
+        return histogram.rvs(size=(1, size))[0]   
     
     
 class CurveArray(ntuple('CurveArray', 'xkey xvalues ykey yvalues scope')):
@@ -61,6 +75,10 @@ class CurveArray(ntuple('CurveArray', 'xkey xvalues ykey yvalues scope')):
         assert len(yvalues) == len(xvalues)
         assert isinstance(scope, dict)
         return super().__new__(cls, xkey, xvalues, ykey, yvalues, scope)
+ 
+    def __call__(self, xvalue): 
+        curve = interp1d(self.xvalues, self.yvalues, kind='linear', bounds_error=True)   
+        return curve(xvalue)
     
 
 class TableBase(ABC):
@@ -110,11 +128,10 @@ class TableBase(ABC):
  
 
 class CurveTable(TableBase):
-    def __call__(self, xvalue): return self.__curve(xvalue)
+    def __call__(self, xvalue): return self.data(xvalue)
     def __init__(self, curvearray, *args, variables, **kwargs):
         assert isinstance(curvearray, CurveArray)        
         super().__init__(curvearray, *args, variables=variables, **kwargs)      
-        self.__curve = interp1d(self.xvalues, self.yvalues, kind='linear', bounds_error=True) 
                   
     @property
     def curvearray(self): return self.data            
@@ -163,11 +180,10 @@ class CurveTable(TableBase):
     
     
 class HistTable(TableBase):
-    def __call__(self, size): return self.__histogram.rvs(size=(1, size))[0]            
+    def __call__(self, size): return self.data(size)
     def __init__(self, histarray, *args, variables, **kwargs):
         assert isinstance(histarray, HistArray)        
         super().__init__(histarray, *args, variables=variables, **kwargs)    
-        self.__histogram = stats.rv_discrete(name=self.name, values=(self.index, _normalize(self.weights)))
          
     @property
     def histarray(self): return self.data
@@ -202,8 +218,8 @@ class HistTable(TableBase):
     def shape(self): return (2, len(self.data.weights))
     
     def __getitem__(self, key): 
-        if key in self.axis: return self.weights[list(self.axis).index(key)]
-        elif key in self.index: return self.weights[list(self.index).index(key)]
+        if key in self.axis: return int(self.weights[list(self.axis).index(key)])
+        elif key in self.index: return int(self.weights[list(self.index).index(key)])
         else: raise ValueError(key)
 
     def __hash__(self): return hash(self.data)
@@ -557,6 +573,7 @@ class ArrayTable(TableBase):
         assert all([self.layers == 1, self.dims == 1])
         datatype = self.variables[self.headerkeys[0]].datatype
         indexvalues, weightvalues = self.__tohistogram(datatype, *args, **kwargs)
+        weightvalues = _removezeros(weightvalues)
         indexvalues, weightvalues = self.__zippedsort(indexvalues, weightvalues)
         histarray = HistArray(self.datakeys[0], weightvalues, self.headerkeys[0], indexvalues, self.scope)
         return HistTable(histarray, *args, name=self.name, variables=self.variables, **kwargs)        
@@ -587,12 +604,12 @@ class ArrayTable(TableBase):
         b = self.arrays[self.datakeys[0]]
         a = np.zeros((len(b), len(axisvalues)))
         for i, cats in enumerate(self.headers[self.headerkeys[0]]):
-            js = [indexvalues[axisvalues.index(cat)] for cat in _aslist(cats)]
+            js = [indexvalues[axisvalues.index(str(cat))] for cat in _aslist(cats)]
             for j in js: a[i, j] = 1
         weightvalues = np.linalg.solve(a, b)
         return indexvalues, weightvalues
            
-    def tocurve(self, args, **kwargs):
+    def tocurve(self, *args, **kwargs):
         assert all([self.layers == 1, self.dims == 1])
         datatype = self.variables[self.headerkeys[0]].datatype
         xvalues, yvalues = self.__tocurve(datatype, *args, **kwargs)        
@@ -615,7 +632,7 @@ class ArrayTable(TableBase):
         return xvalues, yvalues
     
     @__tocurve.register('date', 'datetime')
-    def __curveFromDateTime(self, *args, **kwargs):
+    def __curveFromDate(self, *args, **kwargs):
         xvalues = np.array([header.index for header in self.headers[self.headerkeys[0]]])             
         yvalues = self.arrays[self.datakeys[0]]
         return xvalues, yvalues 
