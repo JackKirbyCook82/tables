@@ -20,6 +20,7 @@ from collections import namedtuple as ntuple
 
 from utilities.dataframes import dataframe_fromxarray
 from utilities.xarrays import xarray_fromdataframe, standardize, absolute
+from utilities.dispatchers import key_singledispatcher as dispatcher
 from utilities.dispatchers import clskey_singledispatcher as keydispatcher
 from utilities.dispatchers import clstype_singledispatcher as typedispatcher
 from utilities.strings import uppercase
@@ -39,11 +40,21 @@ _aslist = lambda items: [items] if not isinstance(items, (list, tuple)) else lis
 _filterempty = lambda items: [item for item in _aslist(items) if item]
 _normalize = lambda items: np.vectorize(lambda x, t: x/t)(items, items.sum())
 _removezeros = lambda items: np.array([item if item > 0 else 0 for item in items])
+_curveextrapolate = lambda x, y, z: interp1d(x, y, kind='linear', bounds_error=False, fill_value=(y[np.argmin(x)], z)) 
+_curvebounded = lambda x, y: interp1d(x, y, kind='linear', bounds_error=True)   
 
 _replacenan = lambda dataarray, value: xr.where(~np.isnan(dataarray), dataarray, value)
 _replaceinf = lambda dataarray, value: xr.where(~np.isinf(dataarray), dataarray, value)
 _replaceneg = lambda dataarray, value: xr.where(dataarray >= 0, dataarray, value)
 _replacestd = lambda dataarray, value, std: xr.where(absolute(standardize(dataarray)) < std, dataarray, value)
+
+
+@dispatcher
+def createcurve(method, x, y, *args, **kwargs): raise KeyError(method) 
+@createcurve.register('average')
+def createcurve_average(x, y, *args, weights=None, **kwargs): return _curveextrapolate(x, y, np.average(y, weights=_normalize(weights) if weights else None))
+@createcurve.register('last')
+def createcurve_last(x, y, *args, **kwargs): return _curveextrapolate(x, y, y[np.argmax(x)])   
 
 
 class EmptyHistArrayError(Exception):
@@ -63,7 +74,7 @@ class HistArray(ntuple('HistArray', 'weightskey weights indexkey index scope')):
     def __init__(self, *args, **kwargs):
         if self.weights.sum() == 0: raise EmptyHistArrayError(self)
 
-    def __call__(self, size): 
+    def __call__(self, size, *args, **kwargs): 
         try: weights = _normalize(self.weights)
         except ZeroDivisionError: raise ZeroDivisionError(self.weights, self.weights.sum())
         try: histogram = stats.rv_discrete(values=(self.index, weights))
@@ -82,8 +93,9 @@ class CurveArray(ntuple('CurveArray', 'xkey xvalues ykey yvalues scope')):
     def __init__(self, *args, **kwargs):
         if len(self.xvalues) != len(set(self.xvalues)): raise InvalidCurveError(self)
     
-    def __call__(self, xvalue): 
-        curve = interp1d(self.xvalues, self.yvalues, kind='linear', bounds_error=True)   
+    def __call__(self, xvalue, *args, how=None, **kwargs):  
+        if how: curve = createcurve(how, self.xvalues, self.yvalues, *args, **kwargs)
+        else: curve = _curvebounded(self.xvalues, self.yvalues)
         return curve(xvalue)
     
 
@@ -134,10 +146,11 @@ class TableBase(ABC):
  
 
 class CurveTable(TableBase):
-    def __call__(self, xvalue): return self.data(xvalue)
-    def __init__(self, curvearray, *args, variables, **kwargs):
+    def __call__(self, xvalue): return self.data(xvalue, how=self.__how)
+    def __init__(self, curvearray, *args, variables, how=None, **kwargs):
         assert isinstance(curvearray, CurveArray)        
-        super().__init__(curvearray, *args, variables=variables, **kwargs)      
+        super().__init__(curvearray, *args, variables=variables, **kwargs)   
+        self.__how = how
                   
     @property
     def curvearray(self): return self.data            
