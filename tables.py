@@ -65,7 +65,10 @@ class InvalidCurveError(Exception):
 
 class HistArray(ntuple('HistArray', 'weightskey weights indexkey index scope')):
     def __repr__(self): return '{}({})'.format(self.__class__.__name__, ', '.join(['='.join([field, repr(getattr(self, field))]) for field in self._fields]))   
-    def __hash__(self): return hash((self.__class__.__name__, self.weightskey, tuple(self.weights), self.indexkey, tuple(self.index), tuple(self.scope.keys()), tuple(self.scope.values()),))    
+    def __hash__(self): 
+        scopevaluetuple = tuple([hash(values[()]) for values in self.scope.values()])
+        return hash((self.__class__.__name__, self.weightskey, tuple(self.weights), self.indexkey, tuple(self.index), tuple(self.scope.keys()), scopevaluetuple,))    
+    
     def __new__(cls, weightskey, weights, indexkey, index, scope):
         assert len(weights) == len(index)
         assert isinstance(scope, dict)        
@@ -84,7 +87,10 @@ class HistArray(ntuple('HistArray', 'weightskey weights indexkey index scope')):
     
 class CurveArray(ntuple('CurveArray', 'xkey xvalues ykey yvalues scope')):
     def __repr__(self): return '{}({})'.format(self.__class__.__name__, ', '.join(['='.join([field, repr(getattr(self, field))]) for field in self._fields]))  
-    def __hash__(self): return hash((self.__class__.__name__, self.xkey, tuple(self.xvalues), self.ykey, tuple(self.yvalues), tuple(self.scope.keys()), tuple(self.scope.values()),))  
+    def __hash__(self): 
+        scopevaluetuple = tuple([hash(values[()]) for values in self.scope.values()])
+        return hash((self.__class__.__name__, self.weightskey, tuple(self.weights), self.indexkey, tuple(self.index), tuple(self.scope.keys()), scopevaluetuple,))    
+    
     def __new__(cls, xkey, xvalues, ykey, yvalues, scope):
         assert len(yvalues) == len(xvalues)
         assert isinstance(scope, dict)
