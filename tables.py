@@ -184,6 +184,11 @@ class CurveTable(TableBase):
     def keys(self): return (self.data.xkey, self.data.ykey, *self.data.scope.keys())
 
     @property
+    def weightvariable(self): return self.variables[self.weightskey]
+    @property
+    def axisvariable(self): return self.variables[self.axiskey]
+
+    @property
     def layers(self): return 1
     @property
     def dims(self): return 2
@@ -234,6 +239,11 @@ class HistTable(TableBase):
     def scopekeys(self): return tuple(self.data.scope.keys())
     @property
     def keys(self): return (self.data.weightskey, self.data.indexkey, *self.data.scope.keys())
+
+    @property
+    def weightvariable(self): return self.variables[self.weightskey]
+    @property
+    def axisvariable(self): return self.variables[self.axiskey]
 
     @property
     def layers(self): return 1
@@ -597,11 +607,12 @@ class ArrayTable(TableBase):
     def tohistogram(self, *args, **kwargs): 
         assert all([self.layers == 1, self.dims == 1])
         datatype = self.variables[self.headerkeys[0]].datatype
-        indexvalues, weightvalues = self.__tohistogram(datatype, *args, **kwargs)
+        indexvalues, weightvalues, axisvariable = self.__tohistogram(datatype, *args, **kwargs)
         weightvalues = _removezeros(weightvalues)
         indexvalues, weightvalues = self.__zippedsort(indexvalues, weightvalues)
         histarray = HistArray(self.datakeys[0], weightvalues, self.headerkeys[0], indexvalues, self.scope)
-        return HistTable(histarray, *args, name=self.name, variables=self.variables, **kwargs)        
+        variables = self.variables.update({self.headerkeys[0]:axisvariable})
+        return HistTable(histarray, *args, name=self.name, variables=variables, **kwargs)        
         
     @staticmethod
     def __zippedsort(index, weights):
@@ -613,14 +624,16 @@ class ArrayTable(TableBase):
     @keydispatcher
     def __tohistogram(self, datatype, *args, **kwargs): 
         indexvalues = np.array([header.value for header in self.headers[self.headerkeys[0]]])        
+        axisvariable = self.variables[self.headerkeys[0]]
         weightvalues = self.arrays[self.datakeys[0]]
-        return indexvalues, weightvalues        
+        return indexvalues, weightvalues, axisvariable        
     
     @__tohistogram.register('range')
     def __histogramFromRange(self, *args, how, **kwargs):
         indexvalues = np.array([header.consolidate(*args, how=how, **kwargs).value for header in self.headers[self.headerkeys[0]]])
+        axisvariable = self.variables[self.headerkeys[0]].transformation(method='consolidate', how=how)
         weightvalues = self.arrays[self.datakeys[0]]
-        return indexvalues, weightvalues     
+        return indexvalues, weightvalues, axisvariable
     
     @__tohistogram.register('category')
     def __histogramFromCategory(self, *args, **kwargs):
@@ -631,36 +644,38 @@ class ArrayTable(TableBase):
         for i, cats in enumerate(self.headers[self.headerkeys[0]]):
             js = [indexvalues[axisvalues.index(str(cat))] for cat in _aslist(cats)]
             for j in js: a[i, j] = 1
+        axisvariable = self.variables[self.headerkeys[0]]
         weightvalues = np.linalg.solve(a, b)
-        return indexvalues, weightvalues
+        return indexvalues, weightvalues, axisvariable
            
     def tocurve(self, *args, **kwargs):
         assert all([self.layers == 1, self.dims == 1])
         datatype = self.variables[self.headerkeys[0]].datatype
-        xvalues, yvalues = self.__tocurve(datatype, *args, **kwargs)        
+        xvalues, yvalues, axisvariable = self.__tocurve(datatype, *args, **kwargs)        
         curvearray = CurveArray(self.headerkeys[0], xvalues, self.datakeys[0], yvalues, self.scope)
-        return CurveTable(curvearray, *args, name=self.name, variables=self.variables, **kwargs)  
+        variables = self.variables.update({self.headerkeys[0]:axisvariable})
+        return CurveTable(curvearray, *args, name=self.name, variables=variables, **kwargs)  
     
     @keydispatcher
-    def __tocurve(self, datatype, *args, **kwargs): raise KeyError(datatype)
-    
-    @__tocurve.register('num')
-    def __curveFromNum(self, *args, **kwargs):
+    def __tocurve(self, datatype, *args, **kwargs): 
         xvalues = np.array([header.value for header in self.headers[self.headerkeys[0]]])
         yvalues = self.arrays[self.datakeys[0]]
-        return xvalues, yvalues
+        axisvariables = self.variables[self.headerkeys[0]]
+        return xvalues, yvalues, axisvariables
     
     @__tocurve.register('range')
     def __curveFromRange(self, *args, how, **kwargs):
         xvalues = np.array([header.consolidate(*args, how=how, **kwargs).value for header in self.headers[self.headerkeys[0]]])             
         yvalues = self.arrays[self.datakeys[0]]
-        return xvalues, yvalues
-    
+        axisvariable = self.variables[self.headerkeys[0]].transformation(method='consolidate', how=how)
+        return xvalues, yvalues, axisvariable
+ 
     @__tocurve.register('date', 'datetime')
     def __curveFromDate(self, *args, **kwargs):
         xvalues = np.array([header.index for header in self.headers[self.headerkeys[0]]])             
         yvalues = self.arrays[self.datakeys[0]]
-        return xvalues, yvalues 
+        axisvariable = self.variables[self.headerkeys[0]]
+        return xvalues, yvalues, axisvariable 
 
 
 

@@ -101,7 +101,7 @@ class HistTableView(TableViewBase):
     @property
     def weightstrings(self): return _weightstring(self.table.weightskey, self.table.weights)
     @property
-    def axisstrings(self): return _axisstring(self.table.axiskey, self.table.axis)
+    def axisstrings(self): return _axisstring(self.table.axiskey, [str(value) for value in self.table.axis])
     @property
     def indexstrings(self): return _indexstring(self.table.axiskey, self.table.index)    
     @property
