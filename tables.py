@@ -57,6 +57,10 @@ def createcurve_average(x, y, *args, weights=None, **kwargs): return _curveextra
 def createcurve_last(x, y, *args, **kwargs): return _curveextrapolate(x, y, y[np.argmax(x)])   
 
 
+class FlattenError(Exception): pass
+class ToHistogramError(Exception): pass
+class ToCurveError(Exception): pass
+    
 class EmptyHistArrayError(Exception):
     def __init__(self, histarray): super().__init__(repr(histarray))
 class InvalidCurveError(Exception):
@@ -184,9 +188,9 @@ class CurveTable(TableBase):
     def keys(self): return (self.data.xkey, self.data.ykey, *self.data.scope.keys())
 
     @property
-    def weightvariable(self): return self.variables[self.weightskey]
+    def xvariable(self): return self.variables[self.xkey]
     @property
-    def axisvariable(self): return self.variables[self.axiskey]
+    def yvariable(self): return self.variables[self.ykey]
 
     @property
     def layers(self): return 1
@@ -605,7 +609,9 @@ class ArrayTable(TableBase):
         return FlatTable(dataframe, variables=self.variables.copy(), name=self.name)        
 
     def tohistogram(self, *args, **kwargs): 
-        assert all([self.layers == 1, self.dims == 1])
+        if not all([self.layers == 1, self.dims == 1]): 
+            print(self)
+            raise ToHistogramError()
         datatype = self.variables[self.headerkeys[0]].datatype
         indexvalues, weightvalues, axisvariable = self.__tohistogram(datatype, *args, **kwargs)
         weightvalues = _removezeros(weightvalues)
@@ -649,7 +655,9 @@ class ArrayTable(TableBase):
         return indexvalues, weightvalues, axisvariable
            
     def tocurve(self, *args, **kwargs):
-        assert all([self.layers == 1, self.dims == 1])
+        if not all([self.layers == 1, self.dims == 1]): 
+            print(self)
+            raise ToCurveError()
         datatype = self.variables[self.headerkeys[0]].datatype
         xvalues, yvalues, axisvariable = self.__tocurve(datatype, *args, **kwargs)        
         curvearray = CurveArray(self.headerkeys[0], xvalues, self.datakeys[0], yvalues, self.scope)
