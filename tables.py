@@ -12,7 +12,7 @@ import pandas as pd
 import openpyxl
 import numpy as np
 import xarray as xr
-from scipy import stats
+from scipy import stats, linalg
 from scipy.interpolate import interp1d
 from numbers import Number
 from collections import OrderedDict as ODict
@@ -37,6 +37,7 @@ AGGREGATIONS = {'sum':np.sum, 'avg':np.mean, 'max':np.max, 'min':np.min}
 _union = lambda x, y: list(set(x) | set(y))
 _intersection = lambda x, y: list(set(x) & set(y))
 _aslist = lambda items: [items] if not isinstance(items, (list, tuple)) else list(items)
+_flatten = lambda nesteditems: [item for items in nesteditems for item in items]
 _filterempty = lambda items: [item for item in _aslist(items) if item]
 _normalize = lambda items: np.vectorize(lambda x, t: x/t)(items, items.sum())
 _removezeros = lambda items: np.array([item if item > 0 else 0 for item in items])
@@ -199,15 +200,7 @@ class CurveTable(TableBase):
         data = CurveArray(tags.get(self.data.xkey, self.data.xkey), self.data.xvalues, tags.get(self.data.ykey, self.data.ykey), self.data.yvalues, scope)
         return self.__class__(data, variables=variables, name=self.name)    
 
-    @classmethod
-    def fromDict(cls, xkey, ykey, items, *args, variables, scope={}, **kwargs):
-        assert isinstance(items, dict) and isinstance(scope, dict)
-        items = [(variables[xkey](x), y) for x, y in items.items()]
-        xvalues, yvalues = np.array([item[0].index for item in items]), np.array([item[1] for item in items])
-        curvearray = CurveArray(xkey, xvalues, ykey, yvalues, scope)
-        return cls(curvearray, variables=variables)
 
-    
 class HistTable(TableBase):
     def __call__(self, size): return self.data(size)
     def __init__(self, histarray, *args, variables, **kwargs):
@@ -291,12 +284,30 @@ class HistTable(TableBase):
         return np.sum(np.array([indexfunction(i) * weightfunction(w) for i, w in zip(self.index, self.weights)]))
 
     @classmethod
-    def fromDict(cls, axiskey, weightkey, items, *args, variables, scope={}, **kwargs):
-        assert isinstance(items, dict) and isinstance(scope, dict)
-        items = [(variables[axiskey](axis), weight) for axis, weight in items.items()]
-        index, weights = np.array([item[0].index for item in items]), np.array([item[1] for item in items])
-        curvearray = CurveArray(weightkey, weights, axiskey, index, scope)
-        return cls(curvearray, variables=variables)
+    def fromDict(cls, axiskey, weightkey, items, *args, variables, scope={}, how='average', **kwargs):
+        assert isinstance(items, dict) and isinstance(scope, dict)  
+        items = ODict([(key, value) for key, value in items.items()])
+        axisvariable = variables[axiskey]
+        if axisvariable.datatype == 'num': 
+            index = np.array([variables[axiskey](key).index for key in items.key()])
+            weights = np.array([value for value in items.values()])
+        elif axisvariable.datatype == 'range':
+            index = np.array([variables[axiskey](key).consolidate(*args, how=how, **kwargs).index for key in items.keys()])
+            weights = np.array([value for value in items.values()])
+        elif axisvariable.datatype == 'category':            
+            axisvalues = variables[axiskey].categories()   
+            items = {variables[axiskey].fromstr(key).value:value for key, value in items.items()}
+            a = np.array([np.array([int(cat in keys) for cat in axisvalues]) for keys in items.keys()])
+            a = np.delete(a, np.where(~a.any(axis=0))[0], axis=1)
+            b = np.array([*items.values()])    
+            cats = tuple([cat for cat in axisvalues if cat in set(_flatten([list(keys) for keys in items.keys()]))])
+            x = linalg.solve(a, b)
+            index = variables[axiskey].indexes()   
+            weights = np.array([x[cats.index(cat)] if cat in cats else 0 for cat in axisvalues])    
+        else: raise TypeError(type(axisvariable))        
+        histarray = HistArray(weightkey, weights, axiskey, index, scope)
+        return cls(histarray, variables=variables, name=kwargs.get('name', '|'.join([weightkey, axiskey])))        
+
 
 
 class FlatTable(TableBase):
@@ -645,17 +656,18 @@ class ArrayTable(TableBase):
     
     @__tohistogram.register('category')
     def __histogramFromCategory(self, *args, **kwargs):
-        axisvalues = self.variables[self.headerkeys[0]].spec.categories 
-        indexvalues = self.variables[self.headerkeys[0]].spec.indexes 
-        b = self.arrays[self.datakeys[0]]
-        a = np.zeros((len(b), len(axisvalues)))
-        for i, cats in enumerate(self.headers[self.headerkeys[0]]):
-            js = [indexvalues[axisvalues.index(str(cat))] for cat in _aslist(cats)]
-            for j in js: a[i, j] = 1
+        axisvalues = self.variables[self.headerkeys[0]].categories() 
+        indexvalues = self.variables[self.headerkeys[0]].indexes()         
+        items = {header.value:data for header, data in zip(self.headers[self.headerkeys[0]], self.arrays[self.datakeys[0]])}
+        a = np.array([np.array([int(cat in keys) for cat in axisvalues]) for keys in items.keys()])
+        a = np.delete(a, np.where(~a.any(axis=0))[0], axis=1)
+        b = np.array([*items.values()])        
+        cats = tuple([cat for cat in axisvalues if cat in set(_flatten([list(keys) for keys in items.keys()]))])
+        x = linalg.solve(a, b)
+        weightvalues = np.array([x[cats.index(cat)] if cat in cats else 0 for cat in axisvalues])
         axisvariable = self.variables[self.headerkeys[0]]
-        weightvalues = np.linalg.solve(a, b)
         return indexvalues, weightvalues, axisvariable
-           
+            
     def tocurve(self, *args, **kwargs):
         if not all([self.layers == 1, self.dims == 1]): 
             print(self)
