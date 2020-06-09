@@ -69,46 +69,34 @@ class InvalidCurveError(Exception):
 
 class HistArray(ntuple('HistArray', 'weightskey weights indexkey index scope')):
     def __repr__(self): return '{}({})'.format(self.__class__.__name__, ', '.join(['='.join([field, repr(getattr(self, field))]) for field in self._fields]))   
-    def __hash__(self): 
-        scopevaluetuple = tuple([hash(values[()]) for values in self.scope.values()])
-        return hash((self.__class__.__name__, self.weightskey, tuple(self.weights), self.indexkey, tuple(self.index), tuple(self.scope.keys()), scopevaluetuple,))    
-    
     def __new__(cls, weightskey, weights, indexkey, index, scope):
         assert len(weights) == len(index)
         assert isinstance(scope, dict)        
         return super().__new__(cls, weightskey, weights, indexkey, index, scope)
-
+    
+    def __call__(self, size, *args, **kwargs): return self.histogram.rvs(size=(1, size))[0] 
     def __init__(self, *args, **kwargs):
         if self.weights.sum() == 0: raise EmptyHistArrayError(self)
-
-    def __call__(self, size, *args, **kwargs): 
         try: weights = _normalize(self.weights)
         except ZeroDivisionError: raise ZeroDivisionError(self.weights, self.weights.sum())
-        try: histogram = stats.rv_discrete(values=(self.index, weights))
-        except ValueError: raise ValueError(weights, weights.sum())
-        return histogram.rvs(size=(1, size))[0]   
-    
-    
+        try: self.histogram = stats.rv_discrete(values=(self.index, weights))
+        except ValueError: raise ValueError(weights, weights.sum())  
+
+
 class CurveArray(ntuple('CurveArray', 'xkey xvalues ykey yvalues scope')):
     def __repr__(self): return '{}({})'.format(self.__class__.__name__, ', '.join(['='.join([field, repr(getattr(self, field))]) for field in self._fields]))  
-    def __hash__(self): 
-        scopevaluetuple = tuple([hash(values[()]) for values in self.scope.values()])
-        return hash((self.__class__.__name__, self.weightskey, tuple(self.weights), self.indexkey, tuple(self.index), tuple(self.scope.keys()), scopevaluetuple,))    
-    
     def __new__(cls, xkey, xvalues, ykey, yvalues, scope):
         assert len(yvalues) == len(xvalues)
         assert isinstance(scope, dict)
         return super().__new__(cls, xkey, xvalues, ykey, yvalues, scope)
  
-    def __init__(self, *args, **kwargs):
+    def __call__(self, xvalue, **kwargs): return self.curve(xvalue) 
+    def __init__(self, *args, how=None, **kwargs):
         if len(self.xvalues) != len(set(self.xvalues)): raise InvalidCurveError(self)
+        if how: self.curve = createcurve(how, self.xvalues, self.yvalues, *args, **kwargs)
+        else: self.curve = _curvebounded(self.xvalues, self.yvalues)    
     
-    def __call__(self, xvalue, *args, how=None, **kwargs):  
-        if how: curve = createcurve(how, self.xvalues, self.yvalues, *args, **kwargs)
-        else: curve = _curvebounded(self.xvalues, self.yvalues)
-        return curve(xvalue)
     
-
 class TableBase(ABC):
     View = lambda table: None
     @classmethod
@@ -176,7 +164,7 @@ class CurveTable(TableBase):
     @property
     def scope(self): return self.data.scope 
     @property
-    def curve(self): return self.__curve
+    def curve(self): return self.curvearray.curve
 
     @property
     def xkey(self): return self.data.xkey  
@@ -198,8 +186,7 @@ class CurveTable(TableBase):
     def dims(self): return 2
     @property
     def shape(self): return (2, len(self.data.xvalues))
-    
-    def __hash__(self): return hash(self.data)
+
     def __repr__(self): return repr(self.data)
     def __len__(self): return len(self.data.xvalues)       
     def __iter__(self): 
@@ -211,7 +198,15 @@ class CurveTable(TableBase):
         for oldkey, newkey in tags.items(): variables[newkey], scope[newkey] = variables[oldkey], scope[oldkey]
         data = CurveArray(tags.get(self.data.xkey, self.data.xkey), self.data.xvalues, tags.get(self.data.ykey, self.data.ykey), self.data.yvalues, scope)
         return self.__class__(data, variables=variables, name=self.name)    
-    
+
+    @classmethod
+    def fromDict(cls, xkey, ykey, items, *args, variables, scope={}, **kwargs):
+        assert isinstance(items, dict) and isinstance(scope, dict)
+        items = [(variables[xkey](x), y) for x, y in items.items()]
+        xvalues, yvalues = np.array([item[0].index for item in items]), np.array([item[1] for item in items])
+        curvearray = CurveArray(xkey, xvalues, ykey, yvalues, scope)
+        return cls(curvearray, variables=variables)
+
     
 class HistTable(TableBase):
     def __call__(self, size): return self.data(size)
@@ -231,7 +226,7 @@ class HistTable(TableBase):
     @property
     def scope(self): return self.data.scope
     @property
-    def histogram(self): return self.__histogram
+    def histogram(self): return self.histarray.histogram
     
     @property
     def weightskey(self): return self.data.weightskey
@@ -261,7 +256,6 @@ class HistTable(TableBase):
         elif key in self.index: return int(self.weights[list(self.index).index(key)])
         else: raise ValueError(key)
 
-    def __hash__(self): return hash(self.data)
     def __repr__(self): return repr(self.data)     
     def __len__(self): return len(self.data.weights)       
     def __iter__(self): 
@@ -295,7 +289,15 @@ class HistTable(TableBase):
         indexfunction = lambda i: pow(x - i, 2) / pow(self.xmax() - self.xmin(), 2)
         weightfunction = lambda weight: weight / self.total()
         return np.sum(np.array([indexfunction(i) * weightfunction(w) for i, w in zip(self.index, self.weights)]))
-    
+
+    @classmethod
+    def fromDict(cls, axiskey, weightkey, items, *args, variables, scope={}, **kwargs):
+        assert isinstance(items, dict) and isinstance(scope, dict)
+        items = [(variables[axiskey](axis), weight) for axis, weight in items.items()]
+        index, weights = np.array([item[0].index for item in items]), np.array([item[1] for item in items])
+        curvearray = CurveArray(weightkey, weights, axiskey, index, scope)
+        return cls(curvearray, variables=variables)
+
 
 class FlatTable(TableBase):
     def __init__(self, data, *args, variables, **kwargs):
