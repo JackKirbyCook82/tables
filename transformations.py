@@ -152,7 +152,7 @@ class Uncumulate:
 
 
 @Transformation.register(required=('how', 'by'),
-                         xarray_funcs={'average':xar.wtaverage, 'stdev':xar.wtstdev, 'median':xar.wtmedian}, 
+                         xarray_funcs={'average':xar.wtaverage}, 
                          varray_funcs={'summation':var.summation, 'couple':var.couple})
 class WeightReduction:
     def execute(self, dataarray, *args, axis, datavariable, axisvariable, how, by, **kwargs):
