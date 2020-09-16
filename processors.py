@@ -58,8 +58,6 @@ class Calculation(Tree):
 
 
 class CalculationRenderer(Renderer): pass
-
-
 class CalculationProcess(dict):
     def __init__(self, key, *args, name=None, **kwargs):
         self.__key, self.__name = key, name
