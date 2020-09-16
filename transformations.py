@@ -41,7 +41,6 @@ def headertype(varray):
 
 class Transformation(ABC):
     def __init_subclass__(cls, *args, required=(), defaults={}, xarray_funcs={}, narray_funcs={}, varray_funcs={}, **kwargs):
-        super().__init_subclass__(**kwargs)
         assert isinstance(required, tuple) and isinstance(defaults, dict)
         assert all([isinstance(funcs, dict) for funcs in (xarray_funcs, narray_funcs, varray_funcs)])
         setattr(cls, 'required', required)
