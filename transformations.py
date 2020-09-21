@@ -71,7 +71,7 @@ class Transformation(ABC):
             newaxisvariables = list(set(newaxisvariables.values()))
             assert len(newaxisvariables) == 1
             newaxisvariables = {axis:newaxisvariables[0]}
-        else: raise TypeError(type(xarray))        
+        else: raise TypeError(type(xarray).__name__)        
         newvariables = {**newdatavariables, **newaxisvariables}        
         return newxarray, newvariables
 

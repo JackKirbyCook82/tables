@@ -278,7 +278,7 @@ class HistTable(TableBase):
         elif isinstance(x, str):
             if x in self.index: x = self.index.index(x) 
             else: raise ValueError(x)
-        else: raise TypeError(type(x))        
+        else: raise TypeError(type(x).__name__)        
         indexfunction = lambda i: pow(x - i, 2) / pow(self.xmax() - self.xmin(), 2)
         weightfunction = lambda weight: weight / self.total()
         return np.sum(np.array([indexfunction(i) * weightfunction(w) for i, w in zip(self.index, self.weights)]))
@@ -304,7 +304,7 @@ class HistTable(TableBase):
             x = linalg.solve(a, b)
             index = variables[axiskey].indexes()   
             weights = np.array([x[cats.index(cat)] if cat in cats else 0 for cat in axisvalues])    
-        else: raise TypeError(type(axisvariable))        
+        else: raise TypeError(type(axisvariable).__name__)        
         histarray = HistArray(weightkey, weights, axiskey, index, scope)
         return cls(histarray, variables=variables, name=kwargs.get('name', '|'.join([weightkey, axiskey])))        
 
@@ -461,7 +461,7 @@ class ArrayTable(TableBase):
         
     def __getitem__(self, items): return self.__getitem(items)
     @typedispatcher
-    def __getitem(self, items): raise TypeError(type(items))    
+    def __getitem(self, items): raise TypeError(type(items).__name__)    
 
     @__getitem.register(int)
     def __getitemInt(self, items): return self[self.datakeys[items]] 
