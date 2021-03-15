@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Created on Mon August 19 2019
-@name:   Table Package Options
+@name:   Tables Module
 @author: Jack Kirby Cook
 
 """
